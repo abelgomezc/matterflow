@@ -36,10 +36,8 @@ export const colorForMode = (mode: MatterMode): THREE.Color => {
   switch (mode) {
     case 'plasma':
       return c('#C084FC')
-    case 'sith':
-      return c('#7DD3FC')
-    case 'air':
-      return c('#BEE7FF')
+    case 'rays':
+      return c('#1E6BFF')
     case 'force':
       return c('#7DD3FC')
     case 'particles':

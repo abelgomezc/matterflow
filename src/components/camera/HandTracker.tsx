@@ -43,6 +43,12 @@ export default function HandTracker() {
   const setForce = useMatterStore((s) => s.setForce)
   const setDemoMode = useMatterStore((s) => s.setDemoMode)
   const setCameraActive = useMatterStore((s) => s.setCameraActive)
+  const setEasterEgg = useMatterStore((s) => s.setEasterEgg)
+  const setNoSign = useMatterStore((s) => s.setNoSign)
+  const eggTimer = useRef<number | undefined>(undefined)
+  const amenFrames = useRef(0)
+  const unknownFrames = useRef(0)
+  const noSignCooldown = useRef(0)
 
   const { hands, isReady, error, startDetection, stopDetection } =
     useHandTracking(videoRef)
@@ -93,6 +99,7 @@ export default function HandTracker() {
       setDemoMode(false)
       setHandsDetected(hands.length)
 
+      let primaryUnknown = false
       const pointers: Pointer[] = hands.map((hand, i) => {
         const g = detectGesture(
           hand,
@@ -102,6 +109,7 @@ export default function HandTracker() {
         )
         const mode = gestureToMode(g.gesture)
         if (i === 0) {
+          primaryUnknown = g.gesture === 'UNKNOWN'
           setInteractionMode(mode)
           setCurrentGesture(gestureLabel(g.gesture))
           setForce(g.intensity)
@@ -109,13 +117,44 @@ export default function HandTracker() {
         return { x: hand.x, y: hand.y, mode, intensity: g.intensity, active: true }
       })
 
-      // Dos manos: modo especial (campo entre ambas) -> se refuerza el vortex
-      if (pointers.length === 2) {
-        setCurrentGesture('Dos manos: campo')
+      // 🙏 "Amen": las DOS manos muy juntas -> easter egg. Requiere mantenerlo
+      // ~varios cuadros (anti-parpadeo). Es un gesto de 2 manos, muy distintivo.
+      let amen = false
+      if (hands.length === 2) {
+        const d = Math.hypot(hands[0].x - hands[1].x, hands[0].y - hands[1].y)
+        if (d < 0.16) amen = true
+      }
+      if (amen) {
+        setCurrentGesture('Manos juntas 🙏')
+        amenFrames.current += 1
+        unknownFrames.current = 0
+        if (amenFrames.current >= 6) {
+          setEasterEgg(true)
+          if (eggTimer.current) window.clearTimeout(eggTimer.current)
+          eggTimer.current = window.setTimeout(() => setEasterEgg(false), 5000)
+        }
+      } else {
+        amenFrames.current = 0
+        // Dos manos separadas: modo especial (campo entre ambas)
+        if (pointers.length === 2) setCurrentGesture('Dos manos: campo')
+
+        // Seña no reconocida sostenida -> mensaje gracioso (con enfriamiento)
+        if (primaryUnknown && hands.length === 1) {
+          unknownFrames.current += 1
+          if (unknownFrames.current >= 14 && Date.now() > noSignCooldown.current) {
+            setNoSign(true)
+            noSignCooldown.current = Date.now() + 7000
+            window.setTimeout(() => setNoSign(false), 2600)
+          }
+        } else {
+          unknownFrames.current = 0
+        }
       }
       setPointers(pointers)
     } else {
       setHandsDetected(0)
+      amenFrames.current = 0
+      unknownFrames.current = 0
       if (cameraActive) {
         setCurrentGesture('Buscando manos...')
       }

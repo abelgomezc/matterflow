@@ -15,6 +15,8 @@ interface MatterState {
   demoMode: boolean // cursor simulado cuando no hay camara/manos
   showGuide: boolean
   paused: boolean // congela la animacion (frameloop del canvas)
+  easterEgg: boolean // seña de Victoria -> frase + imagenes
+  noSign: boolean // seña no reconocida -> mensaje gracioso
 
   setMatterMode: (mode: MatterMode) => void
   setInteractionMode: (mode: InteractionMode) => void
@@ -27,6 +29,8 @@ interface MatterState {
   setDemoMode: (on: boolean) => void
   toggleGuide: () => void
   togglePaused: () => void
+  setEasterEgg: (on: boolean) => void
+  setNoSign: (on: boolean) => void
 }
 
 export const useMatterStore = create<MatterState>((set) => ({
@@ -41,6 +45,8 @@ export const useMatterStore = create<MatterState>((set) => ({
   demoMode: true,
   showGuide: true,
   paused: false,
+  easterEgg: false,
+  noSign: false,
 
   setMatterMode: (mode) => set({ matterMode: mode }),
   setInteractionMode: (mode) => set({ interactionMode: mode }),
@@ -53,4 +59,6 @@ export const useMatterStore = create<MatterState>((set) => ({
   setDemoMode: (on) => set({ demoMode: on }),
   toggleGuide: () => set((s) => ({ showGuide: !s.showGuide })),
   togglePaused: () => set((s) => ({ paused: !s.paused })),
+  setEasterEgg: (on) => set({ easterEgg: on }),
+  setNoSign: (on) => set({ noSign: on }),
 }))

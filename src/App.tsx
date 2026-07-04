@@ -6,9 +6,11 @@ import ModeSelector from './components/ui/ModeSelector'
 import StatsHUD from './components/ui/StatsHUD'
 import GestureGuide from './components/ui/GestureGuide'
 import Controls from './components/ui/Controls'
+import NoSignToast from './components/ui/NoSignToast'
 import Copyright from './components/ui/Copyright'
 import StartOverlay from './components/ui/StartOverlay'
 import ModeTransition from './components/ui/ModeTransition'
+import EasterEgg from './components/ui/EasterEgg'
 
 export default function App() {
   return (
@@ -28,10 +30,14 @@ export default function App() {
       <GestureGuide />
       <ModeSelector />
       <Controls />
+      <NoSignToast />
       <Copyright />
 
       {/* Pantalla inicial con boton explicito de camara */}
       <StartOverlay />
+
+      {/* Easter egg: seña de Victoria (✌️) o tecla V */}
+      <EasterEgg />
     </div>
   )
 }

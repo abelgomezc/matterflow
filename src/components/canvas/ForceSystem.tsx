@@ -1,21 +1,25 @@
 // MatterFlow - LA FUERZA (Star Wars) sobre el entorno real. (c) 2026 Abel Gomez
-// Se distorsiona EL VIDEO de la camara (sin objetos ficticios):
-//   - MANO ABIERTA  -> emite un PULSO (onda expansiva) que empuja el entorno.
-//   - CERRAR LA MANO (puno/garra) -> AGARRA la region del video que esta bajo
-//     la mano en ese instante y la arrastra/levanta siguiendo la mano, con
-//     estrujado y temblor (estrangular). Al abrir, se suelta.
-// Sin camara, cae a una rejilla procedural para ver el efecto.
+// Distorsiona EL VIDEO de la camara (sin objetos ficticios):
+//   - EMPUJAR: se detecta el MOVIMIENTO de empuje de la mano abierta (un envion
+//     rapido o acercarla a la camara) y se emite un PULSO/onda expansiva que
+//     empuja el entorno. No basta con abrir la mano: hay que "empujar".
+//   - AGARRAR / ASFIXIAR: al CERRAR la mano (puno/garra) engancha la region del
+//     video bajo la mano, la arrastra/levanta siguiendola y la estruja (choke)
+//     con temblor. Al abrir, se suelta.
+// Sin camara, cae a una rejilla procedural (mouse: mover rapido = pulso,
+// mantener presionado = agarrar).
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { getPointers } from '../../store/pointerBus'
 import { useMatterStore } from '../../store/matterStore'
-import { cameraBus } from '../camera/HandTracker'
+import { cameraBus, handLandmarksBus } from '../camera/HandTracker'
+import { isFingerExtended, dist2D } from '../../utils/handUtils'
 
-const MAXP = 8 // maximo de pulsos simultaneos
+const MAXP = 10
 
 interface Pulse {
-  x: number // uv 0-1 (y hacia arriba)
+  x: number
   y: number
   r: number
   life: number
@@ -24,11 +28,18 @@ interface Pulse {
 
 interface Grab {
   active: boolean
-  ax: number // ancla (region agarrada) uv
+  ax: number
   ay: number
-  hx: number // mano actual uv
+  hx: number
   hy: number
-  amt: number // 0-1 intensidad del agarre (rampa)
+  amt: number
+}
+
+interface Track {
+  x: number
+  y: number
+  scale: number
+  init: boolean
 }
 
 const VERT = /* glsl */ `
@@ -44,13 +55,13 @@ const FRAG = /* glsl */ `
   varying vec2 vUv;
   uniform sampler2D uTex;
   uniform float uHasVideo;
-  uniform vec2 uRes;      // resolucion viewport (px)
-  uniform vec2 uTexRes;   // resolucion video (px)
+  uniform vec2 uRes;
+  uniform vec2 uTexRes;
   uniform float uTime;
   uniform int uPulseCount;
-  uniform vec4 uPulses[${MAXP}];  // xy=centro(uv), z=radio, w=vida
-  uniform vec4 uGrabs[2];         // xy=mano(uv), zw=ancla(uv)
-  uniform float uGrabAmt[2];      // 0-1
+  uniform vec4 uPulses[${MAXP}];  // xy=centro, z=radio, w=fuerza
+  uniform vec4 uGrabs[2];         // xy=mano, zw=ancla
+  uniform float uGrabAmt[2];
 
   vec2 coverUv(vec2 uv, vec2 res, vec2 texRes) {
     vec2 s = res / texRes;
@@ -67,12 +78,12 @@ const FRAG = /* glsl */ `
 
   void main() {
     float asp = uRes.x / uRes.y;
-    vec2 suv = vUv;               // 0..1 pantalla, y arriba
+    vec2 suv = vUv;
     vec2 disp = vec2(0.0);
-    float rim = 0.0;   // brillo del frente de onda
-    float grip = 0.0;  // intensidad de agarre (para oscurecer/halo)
+    float rim = 0.0;
+    float grip = 0.0;
 
-    // --- pulsos de empuje (mano abierta) ---
+    // pulsos de empuje
     for (int i = 0; i < ${MAXP}; i++) {
       if (i >= uPulseCount) break;
       vec4 p = uPulses[i];
@@ -80,28 +91,27 @@ const FRAG = /* glsl */ `
       d.x *= asp;
       float dist = length(d);
       vec2 dirn = dist > 1e-4 ? d / dist : vec2(0.0);
-      float ring = exp(-pow((dist - p.z) / 0.045, 2.0));
-      disp += dirn * ring * p.w * 0.07;
+      // anillo fino y nitido (onda reconocible) con distorsion sutil
+      float ring = exp(-pow((dist - p.z) / 0.022, 2.0));
+      float ring2 = exp(-pow((dist - p.z + 0.03) / 0.05, 2.0)); // frente trasero suave
+      disp += dirn * (ring * 0.9 + ring2 * 0.3) * p.w * 0.045;
       rim += ring * p.w;
     }
 
-    // --- agarrar/arrastrar/estrangular (mano cerrada) ---
+    // agarrar / estrujar (asfixia)
     for (int i = 0; i < 2; i++) {
       float amt = uGrabAmt[i];
       if (amt <= 0.001) continue;
-      vec2 h = uGrabs[i].xy;   // mano actual
-      vec2 a = uGrabs[i].zw;   // region agarrada (ancla)
+      vec2 h = uGrabs[i].xy;
+      vec2 a = uGrabs[i].zw;
       vec2 d = suv - h;
       d.x *= asp;
       float dist = length(d);
-      float w = exp(-pow(dist / 0.17, 2.0)) * amt;
-      // arrastra la region anclada para que siga a la mano
-      disp += (a - h) * w;
-      // pellizco: comprime el entorno hacia la mano (agarre)
-      disp += (h - suv) * w * 0.35;
-      // temblor de estrangulamiento
+      float w = exp(-pow(dist / 0.22, 2.0)) * amt;
+      disp += (a - h) * w;              // arrastra la region con la mano
+      disp += (h - suv) * w * 0.6;      // estruja/comprime hacia la mano (choke)
       vec2 tang = dist > 1e-4 ? vec2(-d.y, d.x) / dist : vec2(0.0);
-      disp += tang * w * 0.012 * sin(uTime * 22.0);
+      disp += tang * w * 0.02 * sin(uTime * 26.0); // temblor
       grip += w;
     }
 
@@ -110,19 +120,24 @@ const FRAG = /* glsl */ `
     vec3 col;
     if (uHasVideo > 0.5) {
       vec2 cuv = coverUv(duv, uRes, uTexRes);
-      cuv.x = 1.0 - cuv.x; // espejo selfie
+      cuv.x = 1.0 - cuv.x;
       col = texture2D(uTex, cuv).rgb;
     } else {
       col = grid(duv);
     }
 
-    col += vec3(0.45, 0.72, 1.0) * rim * 0.5;         // halo de la onda
-    col += vec3(0.5, 0.15, 0.15) * min(grip, 1.0) * 0.35; // tension rojiza al agarrar
-    col *= 1.0 - min(grip, 1.0) * 0.15;               // leve oscurecido en el agarre
+    // onda de fuerza: anillo translucido reconocible (blanco-azulado)
+    col += vec3(0.6, 0.82, 1.0) * min(rim, 1.5) * 0.85;
+    col += vec3(0.55, 0.12, 0.12) * min(grip, 1.0) * 0.45; // tension rojiza (choke)
+    col *= 1.0 - min(grip, 1.0) * 0.22;                    // oscurece el agarre
 
     gl_FragColor = vec4(col, 1.0);
   }
 `
+
+// umbrales de deteccion de empuje
+const V_PUSH = 1.15 // velocidad (unid. normalizadas / s) para envion lateral
+const S_PUSH = 0.45 // crecimiento de escala / s (acercar la mano a la camara)
 
 export default function ForceSystem() {
   const { viewport, size } = useThree()
@@ -134,6 +149,10 @@ export default function ForceSystem() {
   const grabs = useRef<Grab[]>([
     { active: false, ax: 0, ay: 0, hx: 0, hy: 0, amt: 0 },
     { active: false, ax: 0, ay: 0, hx: 0, hy: 0, amt: 0 },
+  ])
+  const tracks = useRef<Track[]>([
+    { x: 0, y: 0, scale: 0, init: false },
+    { x: 0, y: 0, scale: 0, init: false },
   ])
   const texRef = useRef<THREE.VideoTexture | null>(null)
 
@@ -159,6 +178,7 @@ export default function ForceSystem() {
       g.active = false
       g.amt = 0
     })
+    tracks.current.forEach((t) => (t.init = false))
     setParticleCount(0)
     return () => {
       texRef.current?.dispose()
@@ -168,10 +188,11 @@ export default function ForceSystem() {
 
   useFrame((_, delta) => {
     const u = uniforms
+    const dt = Math.min(Math.max(delta, 1 / 240), 1 / 20)
     u.uTime.value += delta
     u.uRes.value.set(size.width, size.height)
 
-    // textura de video de la camara
+    // textura de la camara
     const video = cameraBus.video
     if (video && video.readyState >= 2 && video.videoWidth > 0) {
       if (!texRef.current || texRef.current.image !== video) {
@@ -187,53 +208,90 @@ export default function ForceSystem() {
       u.uHasVideo.value = 0
     }
 
+    const hands = handLandmarksBus.hands
     const pointers = getPointers().filter((p) => p.active).slice(0, 2)
+    const usingHands = hands.length > 0
+    const n = usingHands ? Math.min(hands.length, 2) : Math.min(pointers.length, 2)
+
     let anyGrab = false
     let anyPush = false
 
     for (let i = 0; i < 2; i++) {
-      const ptr = pointers[i]
       const grab = grabs.current[i]
-      if (cooldown.current[i] > 0) cooldown.current[i] -= delta
+      const tr = tracks.current[i]
+      if (cooldown.current[i] > 0) cooldown.current[i] -= dt
 
-      if (!ptr) {
-        // libera suavemente
+      if (i >= n) {
         grab.active = false
-        grab.amt = Math.max(0, grab.amt - delta * 4)
+        grab.amt = Math.max(0, grab.amt - dt * 4)
         u.uGrabAmt.value[i] = grab.amt
+        tr.init = false
         continue
       }
 
-      const uy = 1 - ptr.y
-      const isOpen = ptr.mode === 'attract'
-      // cerrar la mano (puno o pinza) = agarrar
-      const isGrab = ptr.mode === 'repel' || ptr.mode === 'freeze'
-
-      if (isOpen) {
-        // PULSO solo con mano abierta
-        anyPush = true
-        if (cooldown.current[i] <= 0 && pulses.current.length < MAXP) {
-          pulses.current.push({ x: ptr.x, y: uy, r: 0.02, life: 1, strength: 1 })
-          cooldown.current[i] = 0.5
-        }
+      // posicion (y-down), apertura y escala de la mano
+      let cx: number
+      let cy: number
+      let open: boolean
+      let scale: number
+      if (usingHands) {
+        const hand = hands[i]
+        const lm = hand.landmarks
+        cx = hand.x
+        cy = hand.y
+        const ext =
+          (isFingerExtended(lm, 8, 6) ? 1 : 0) +
+          (isFingerExtended(lm, 12, 10) ? 1 : 0) +
+          (isFingerExtended(lm, 16, 14) ? 1 : 0) +
+          (isFingerExtended(lm, 20, 18) ? 1 : 0)
+        open = ext >= 3
+        scale = dist2D(lm[0], lm[9]) // tamano de la palma (mayor = mas cerca)
+      } else {
+        const ptr = pointers[i]
+        cx = ptr.x
+        cy = ptr.y
+        open = ptr.mode !== 'repel' && ptr.mode !== 'freeze'
+        scale = 0
       }
 
-      if (isGrab) {
+      // velocidad y variacion de escala
+      let speed = 0
+      let scaleVel = 0
+      if (tr.init) {
+        speed = Math.hypot(cx - tr.x, cy - tr.y) / dt
+        scaleVel = (scale - tr.scale) / dt
+      }
+      tr.x = cx
+      tr.y = cy
+      tr.scale = scale
+      tr.init = true
+
+      const uy = 1 - cy
+
+      // --- EMPUJAR: gesto/movimiento de empuje con mano abierta ---
+      const pushing = open && (speed > V_PUSH || scaleVel > S_PUSH)
+      if (pushing && cooldown.current[i] <= 0 && pulses.current.length < MAXP) {
+        const strength = Math.min(2.2, 0.8 + Math.max(speed * 0.6, scaleVel * 1.5))
+        pulses.current.push({ x: cx, y: uy, r: 0.02, life: 1, strength })
+        cooldown.current[i] = 0.28
+        anyPush = true
+      }
+
+      // --- AGARRAR / ASFIXIAR: mano cerrada ---
+      if (!open) {
         anyGrab = true
         if (!grab.active) {
-          // ancla la region que esta bajo la mano en este instante
           grab.active = true
-          grab.ax = ptr.x
+          grab.ax = cx
           grab.ay = uy
         }
-        grab.hx = ptr.x
+        grab.hx = cx
         grab.hy = uy
-        grab.amt = Math.min(1, grab.amt + delta * 5)
+        grab.amt = Math.min(1, grab.amt + dt * 5)
       } else {
         grab.active = false
-        grab.amt = Math.max(0, grab.amt - delta * 4)
+        grab.amt = Math.max(0, grab.amt - dt * 4)
       }
-
       u.uGrabs.value[i].set(grab.hx, grab.hy, grab.ax, grab.ay)
       u.uGrabAmt.value[i] = grab.amt
     }
@@ -241,9 +299,9 @@ export default function ForceSystem() {
     // avanza pulsos
     const ps = pulses.current
     for (let i = ps.length - 1; i >= 0; i--) {
-      ps[i].r += delta * 0.9
-      ps[i].life -= delta * 1.4
-      if (ps[i].life <= 0 || ps[i].r > 1.6) ps.splice(i, 1)
+      ps[i].r += dt * 2.1 // onda rapida que cruza la pantalla
+      ps[i].life -= dt * 1.1
+      if (ps[i].life <= 0 || ps[i].r > 2.2) ps.splice(i, 1)
     }
     u.uPulseCount.value = ps.length
     for (let i = 0; i < MAXP; i++) {
@@ -252,10 +310,10 @@ export default function ForceSystem() {
       else u.uPulses.value[i].set(0, 0, 0, 0)
     }
 
-    // HUD
-    if (anyGrab) setCurrentGesture('Fuerza: agarrar')
+    if (anyGrab) setCurrentGesture('Fuerza: agarrar/asfixiar')
     else if (anyPush) setCurrentGesture('Fuerza: empujar')
-    setParticleCount(ps.length)
+    else if (n > 0) setCurrentGesture('Fuerza: lista')
+    setParticleCount(ps.length + (anyGrab ? 1 : 0))
   })
 
   return (
@@ -266,6 +324,7 @@ export default function ForceSystem() {
         fragmentShader={FRAG}
         uniforms={uniforms}
         depthWrite={false}
+        toneMapped={false}
       />
     </mesh>
   )

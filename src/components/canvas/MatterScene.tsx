@@ -15,8 +15,7 @@ import * as THREE from 'three'
 import { useMatterStore } from '../../store/matterStore'
 import ParticleSystem from './ParticleSystem'
 import PlasmaSystem from './PlasmaSystem'
-import SithSystem from './SithSystem'
-import AirSystem from './AirSystem'
+import RaysSystem from './RaysSystem'
 import ForceSystem from './ForceSystem'
 
 /** Cuenta FPS y lo publica al store (throttle ~5 veces/seg). */
@@ -41,10 +40,8 @@ function ActiveMatter() {
   switch (mode) {
     case 'plasma':
       return <PlasmaSystem />
-    case 'sith':
-      return <SithSystem />
-    case 'air':
-      return <AirSystem />
+    case 'rays':
+      return <RaysSystem />
     case 'force':
       return <ForceSystem />
     case 'particles':
@@ -55,12 +52,15 @@ function ActiveMatter() {
 
 export default function MatterScene() {
   // Pausa real: al congelar, el canvas deja de invocar useFrame (frameloop).
+  // Tambien se congela mientras el easter egg (amen) esta activo, para que los
+  // efectos de fondo se detengan y solo se vea la frase + imagenes.
   const paused = useMatterStore((s) => s.paused)
+  const easterEgg = useMatterStore((s) => s.easterEgg)
   return (
     <Canvas
       className="absolute inset-0 z-10"
       dpr={[1, 2]}
-      frameloop={paused ? 'never' : 'always'}
+      frameloop={paused || easterEgg ? 'never' : 'always'}
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
       camera={{ position: [0, 0, 10], fov: 50 }}
       onCreated={({ gl }) => {
@@ -78,20 +78,30 @@ export default function MatterScene() {
 
       <FpsMeter />
 
-      <EffectComposer>
-        <Bloom
-          intensity={1.15}
-          luminanceThreshold={0.12}
-          luminanceSmoothing={0.9}
-          mipmapBlur
-        />
-        <ChromaticAberration
-          blendFunction={BlendFunction.NORMAL}
-          offset={new THREE.Vector2(0.0006, 0.0006)}
-          radialModulation={false}
-          modulationOffset={0}
-        />
-      </EffectComposer>
+      <Post />
     </Canvas>
+  )
+}
+
+/** Post-procesado (Bloom + aberracion). Se DESACTIVA en modo Fuerza para que
+ *  el video de la camara se vea normal (sin el brillo del bloom). */
+function Post() {
+  const mode = useMatterStore((s) => s.matterMode)
+  if (mode === 'force') return null
+  return (
+    <EffectComposer>
+      <Bloom
+        intensity={1.15}
+        luminanceThreshold={0.12}
+        luminanceSmoothing={0.9}
+        mipmapBlur
+      />
+      <ChromaticAberration
+        blendFunction={BlendFunction.NORMAL}
+        offset={new THREE.Vector2(0.0006, 0.0006)}
+        radialModulation={false}
+        modulationOffset={0}
+      />
+    </EffectComposer>
   )
 }

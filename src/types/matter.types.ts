@@ -1,7 +1,7 @@
 // MatterFlow - tipos de materia y particulas. (c) 2026 Abel Gomez
 import * as THREE from 'three'
 
-export type MatterMode = 'particles' | 'plasma' | 'sith' | 'air' | 'force'
+export type MatterMode = 'particles' | 'plasma' | 'rays' | 'force'
 export type InteractionMode = 'attract' | 'repel' | 'vortex' | 'freeze' | 'create'
 
 /** Particula 2D con fisica clasica (motor de utils/physicsUtils). */

@@ -18,6 +18,7 @@ export type Gesture =
   | 'POINTING' // solo indice -> crear materia
   | 'PINCH' // pinza -> congelar
   | 'WRIST_ROTATE' // giro de muneca -> vortex
+  | 'VICTORY' // senal de victoria (V) -> easter egg
   | 'UNKNOWN'
 
 export interface GestureResult {

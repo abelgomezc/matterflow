@@ -5,10 +5,9 @@ import type { MatterMode } from '../../types/matter.types'
 
 const MODES: { id: MatterMode; label: string; icon: string; color: string }[] = [
   { id: 'force', label: 'Fuerza', icon: '💥', color: '#7DD3FC' },
+  { id: 'rays', label: 'Rayos', icon: '⚡', color: '#1E6BFF' },
   { id: 'particles', label: 'Particulas', icon: '✨', color: '#6C63FF' },
   { id: 'plasma', label: 'Plasma', icon: '🌀', color: '#C084FC' },
-  { id: 'sith', label: 'Rayos Sith', icon: '⚡', color: '#7DD3FC' },
-  { id: 'air', label: 'Aire', icon: '🌪️', color: '#BEE7FF' },
 ]
 
 export default function ModeSelector() {

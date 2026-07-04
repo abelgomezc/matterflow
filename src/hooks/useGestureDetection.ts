@@ -70,6 +70,9 @@ export const detectGesture = (
     }
   }
 
+  // (El easter egg ya no usa la V de una mano; se dispara juntando las dos
+  //  manos -> ver deteccion "amen" en HandTracker.)
+
   // --- Palma abierta -> ATRAER ---
   if (indexExt && middleExt && ringExt && pinkyExt) {
     return { gesture: 'OPEN_PALM', intensity: 1.0, handX, handY }
@@ -96,6 +99,7 @@ export const gestureToMode = (gesture: Gesture): InteractionMode => {
     POINTING: 'create',
     PINCH: 'freeze',
     WRIST_ROTATE: 'vortex',
+    VICTORY: 'attract',
     UNKNOWN: 'attract',
   }
   return map[gesture]
@@ -109,6 +113,7 @@ export const gestureLabel = (gesture: Gesture): string => {
     POINTING: 'Indice (crear)',
     PINCH: 'Pinza (congelar)',
     WRIST_ROTATE: 'Giro (vortex)',
+    VICTORY: 'Victoria (V)',
     UNKNOWN: 'Indefinido',
   }
   return map[gesture]

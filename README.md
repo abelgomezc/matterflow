@@ -58,7 +58,7 @@ Con **mouse/touch**: mover = atraer, mantener presionado/click = repeler.
 
 ---
 
-## Los 5 modos
+## Los 4 modos
 
 Cambia entre ellos con la barra inferior (glassmorphism, con transicion suave).
 Con la camara activa, el video se ve de fondo (espejo selfie) y la materia va encima:
@@ -72,14 +72,16 @@ Con la camara activa, el video se ve de fondo (espejo selfie) y la materia va en
      mano, con estrujado y temblor (estrangular estilo Vader). Al abrir, se suelta.
    - Sin camara, cae a una rejilla procedural para ver el efecto (con el mouse:
      mover = pulsos, mantener presionado = agarrar y arrastrar).
-2. **✨ Particulas** — puntos de luz con fisica real (gravedad, friccion, rebote,
+2. **⚡ Rayos** — relampagos **azules** ramificados que emiten segun la pose de
+   la mano: si solo hay **dedos** extendidos, salen **solo de esas puntas**; con
+   la **mano abierta** salen de **dedos + palma**. Al hacer el **movimiento de
+   empuje/pulso**, los rayos salen con **mas fuerza** (mas largos, mas ramas,
+   mas brillo) con un estallido radial desde la palma. Entre dos manos, arco
+   principal. Nucleos brillantes + chispas crepitantes.
+3. **✨ Particulas** — puntos de luz con fisica real (gravedad, friccion, rebote,
    trails y color por energia cinetica: azul → morado → cyan → blanco).
-3. **🌀 Plasma** — arcos de energia violeta que siguen las puntas de los dedos;
+4. **🌀 Plasma** — arcos de energia violeta que siguen las puntas de los dedos;
    entre dos manos se forma un arco principal con chispas.
-4. **⚡ Rayos Sith** — relampagos azul-blanco **ramificados** que se disparan
-   desde las puntas de los dedos hacia afuera (estilo Sith de Star Wars).
-5. **🌪️ Aire** — particulas arrastradas por un campo de flujo (curl-noise) que
-   forma remolinos; la mano genera rafagas de viento.
 
 **Controles:** boton **⏸️ Pausar / ▶️ Reanudar** para congelar la animacion en
 cualquier momento.
