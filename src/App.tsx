@@ -11,6 +11,7 @@ import Copyright from './components/ui/Copyright'
 import StartOverlay from './components/ui/StartOverlay'
 import ModeTransition from './components/ui/ModeTransition'
 import EasterEgg from './components/ui/EasterEgg'
+import UniverseControls from './components/ui/UniverseControls'
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
       <StatsHUD />
       <GestureGuide />
       <ModeSelector />
+      <UniverseControls />
       <Controls />
       <NoSignToast />
       <Copyright />

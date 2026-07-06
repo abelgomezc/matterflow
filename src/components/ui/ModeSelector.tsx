@@ -8,6 +8,7 @@ const MODES: { id: MatterMode; label: string; icon: string; color: string }[] = 
   { id: 'rays', label: 'Rayos', icon: '⚡', color: '#1E6BFF' },
   { id: 'particles', label: 'Particulas', icon: '✨', color: '#6C63FF' },
   { id: 'plasma', label: 'Plasma', icon: '🌀', color: '#C084FC' },
+  { id: 'create', label: 'Crear', icon: '+', color: '#34D399' },
 ]
 
 export default function ModeSelector() {

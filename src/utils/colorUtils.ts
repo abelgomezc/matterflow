@@ -40,6 +40,8 @@ export const colorForMode = (mode: MatterMode): THREE.Color => {
       return c('#1E6BFF')
     case 'force':
       return c('#7DD3FC')
+    case 'create':
+      return c('#34D399')
     case 'particles':
     default:
       return c('#6C63FF')

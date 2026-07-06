@@ -70,8 +70,11 @@ export const detectGesture = (
     }
   }
 
-  // (El easter egg ya no usa la V de una mano; se dispara juntando las dos
-  //  manos -> ver deteccion "amen" en HandTracker.)
+  // --- Dos dedos (V) -> en modo Crear genera una estrella ---
+  // El easter egg sigue siendo exclusivamente la postura de "amen".
+  if (indexExt && middleExt && !ringExt && !pinkyExt) {
+    return { gesture: 'VICTORY', intensity: 0.9, handX, handY }
+  }
 
   // --- Palma abierta -> ATRAER ---
   if (indexExt && middleExt && ringExt && pinkyExt) {

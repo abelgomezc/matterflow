@@ -17,6 +17,7 @@ import ParticleSystem from './ParticleSystem'
 import PlasmaSystem from './PlasmaSystem'
 import RaysSystem from './RaysSystem'
 import ForceSystem from './ForceSystem'
+import UniverseCreationSystem from './UniverseCreationSystem'
 
 /** Cuenta FPS y lo publica al store (throttle ~5 veces/seg). */
 function FpsMeter() {
@@ -44,6 +45,8 @@ function ActiveMatter() {
       return <RaysSystem />
     case 'force':
       return <ForceSystem />
+    case 'create':
+      return <UniverseCreationSystem />
     case 'particles':
     default:
       return <ParticleSystem />

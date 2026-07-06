@@ -15,6 +15,7 @@ import { useMatterStore } from '../../store/matterStore'
 import { setPointers } from '../../store/pointerBus'
 import type { Pointer } from '../../types/matter.types'
 import type { HandData } from '../../hooks/useHandTracking'
+import { dist2D } from '../../utils/handUtils'
 
 /** Publica los landmarks actuales para que el overlay los dibuje. */
 export const handLandmarksBus: { hands: HandData[] } = { hands: [] }
@@ -25,6 +26,76 @@ export const cameraBus: { video: HTMLVideoElement | null } = { video: null }
 
 const VIRTUAL_W = 1280
 const VIRTUAL_H = 720
+const AMEN_HOLD_MS = 650
+const AMEN_LOST_GRACE_MS = 160
+
+const palmCenter = (hand: HandData) => {
+  const palmPoints = [0, 5, 9, 13, 17].map((i) => hand.landmarks[i])
+  return {
+    x: palmPoints.reduce((sum, point) => sum + point.x, 0) / palmPoints.length,
+    y: palmPoints.reduce((sum, point) => sum + point.y, 0) / palmPoints.length,
+    z: 0,
+  }
+}
+
+/** Comprueba una postura de oración, no solo que dos centros se crucen. */
+export const isAmenPose = (hands: HandData[]): boolean => {
+  if (hands.length !== 2 || hands[0].handedness === hands[1].handedness) {
+    return false
+  }
+
+  const [a, b] = hands
+  const scaleA = dist2D(a.landmarks[0], a.landmarks[9])
+  const scaleB = dist2D(b.landmarks[0], b.landmarks[9])
+  const palmScale = (scaleA + scaleB) / 2
+  if (
+    palmScale < 0.025 ||
+    Math.max(scaleA, scaleB) / Math.max(Math.min(scaleA, scaleB), 0.001) > 1.65
+  ) {
+    return false
+  }
+
+  // En amén, las dos palmas, muñecas y puntas de los dedos quedan juntas.
+  if (
+    dist2D(palmCenter(a), palmCenter(b)) > palmScale * 1.35 ||
+    dist2D(a.landmarks[0], b.landmarks[0]) > palmScale * 1.7 ||
+    dist2D(a.landmarks[12], b.landmarks[12]) > palmScale * 1.65
+  ) {
+    return false
+  }
+
+  // Los dedos deben estar extendidos; dos puños juntos no son "amén".
+  const extendedFingerCount = (hand: HandData) =>
+    [
+      [8, 6],
+      [12, 10],
+      [16, 14],
+      [20, 18],
+    ].filter(
+      ([tip, pip]) =>
+        dist2D(hand.landmarks[0], hand.landmarks[tip]) >
+        dist2D(hand.landmarks[0], hand.landmarks[pip]) * 1.12
+    ).length
+
+  if (extendedFingerCount(a) < 3 || extendedFingerCount(b) < 3) return false
+
+  // Ambas manos deben apuntar aproximadamente en la misma dirección.
+  const directionA = {
+    x: a.landmarks[12].x - a.landmarks[0].x,
+    y: a.landmarks[12].y - a.landmarks[0].y,
+  }
+  const directionB = {
+    x: b.landmarks[12].x - b.landmarks[0].x,
+    y: b.landmarks[12].y - b.landmarks[0].y,
+  }
+  const lengthA = Math.hypot(directionA.x, directionA.y)
+  const lengthB = Math.hypot(directionB.x, directionB.y)
+  const alignment =
+    (directionA.x * directionB.x + directionA.y * directionB.y) /
+    Math.max(lengthA * lengthB, 0.001)
+
+  return alignment > 0.78
+}
 
 export default function HandTracker() {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -46,7 +117,9 @@ export default function HandTracker() {
   const setEasterEgg = useMatterStore((s) => s.setEasterEgg)
   const setNoSign = useMatterStore((s) => s.setNoSign)
   const eggTimer = useRef<number | undefined>(undefined)
-  const amenFrames = useRef(0)
+  const amenStartedAt = useRef<number | null>(null)
+  const amenLastSeenAt = useRef(0)
+  const amenLatched = useRef(false)
   const unknownFrames = useRef(0)
   const noSignCooldown = useRef(0)
 
@@ -117,24 +190,29 @@ export default function HandTracker() {
         return { x: hand.x, y: hand.y, mode, intensity: g.intensity, active: true }
       })
 
-      // 🙏 "Amen": las DOS manos muy juntas -> easter egg. Requiere mantenerlo
-      // ~varios cuadros (anti-parpadeo). Es un gesto de 2 manos, muy distintivo.
-      let amen = false
-      if (hands.length === 2) {
-        const d = Math.hypot(hands[0].x - hands[1].x, hands[0].y - hands[1].y)
-        if (d < 0.16) amen = true
-      }
+      // 🙏 "Amén": postura completa sostenida, con una pequeña tolerancia a
+      // fotogramas perdidos por MediaPipe.
+      const now = performance.now()
+      const amen = isAmenPose(hands)
       if (amen) {
         setCurrentGesture('Manos juntas 🙏')
-        amenFrames.current += 1
+        amenLastSeenAt.current = now
+        amenStartedAt.current ??= now
         unknownFrames.current = 0
-        if (amenFrames.current >= 6) {
+        if (
+          !amenLatched.current &&
+          now - amenStartedAt.current >= AMEN_HOLD_MS
+        ) {
+          amenLatched.current = true
           setEasterEgg(true)
           if (eggTimer.current) window.clearTimeout(eggTimer.current)
           eggTimer.current = window.setTimeout(() => setEasterEgg(false), 5000)
         }
       } else {
-        amenFrames.current = 0
+        if (now - amenLastSeenAt.current > AMEN_LOST_GRACE_MS) {
+          amenStartedAt.current = null
+          amenLatched.current = false
+        }
         // Dos manos separadas: modo especial (campo entre ambas)
         if (pointers.length === 2) setCurrentGesture('Dos manos: campo')
 
@@ -153,7 +231,9 @@ export default function HandTracker() {
       setPointers(pointers)
     } else {
       setHandsDetected(0)
-      amenFrames.current = 0
+      amenStartedAt.current = null
+      amenLastSeenAt.current = 0
+      amenLatched.current = false
       unknownFrames.current = 0
       if (cameraActive) {
         setCurrentGesture('Buscando manos...')

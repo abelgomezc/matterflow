@@ -1,7 +1,11 @@
 // MatterFlow - estado global (Zustand). Todo en memoria, sin localStorage.
 // (c) 2026 Abel Gomez
 import { create } from 'zustand'
-import type { MatterMode, InteractionMode } from '../types/matter.types'
+import type {
+  MatterMode,
+  InteractionMode,
+  UniverseTool,
+} from '../types/matter.types'
 
 interface MatterState {
   matterMode: MatterMode
@@ -17,6 +21,9 @@ interface MatterState {
   paused: boolean // congela la animacion (frameloop del canvas)
   easterEgg: boolean // seña de Victoria -> frase + imagenes
   noSign: boolean // seña no reconocida -> mensaje gracioso
+  universeTool: UniverseTool
+  universeResetToken: number
+  universePresetToken: number
 
   setMatterMode: (mode: MatterMode) => void
   setInteractionMode: (mode: InteractionMode) => void
@@ -31,6 +38,9 @@ interface MatterState {
   togglePaused: () => void
   setEasterEgg: (on: boolean) => void
   setNoSign: (on: boolean) => void
+  setUniverseTool: (tool: UniverseTool) => void
+  resetUniverse: () => void
+  createSolarSystem: () => void
 }
 
 export const useMatterStore = create<MatterState>((set) => ({
@@ -47,6 +57,9 @@ export const useMatterStore = create<MatterState>((set) => ({
   paused: false,
   easterEgg: false,
   noSign: false,
+  universeTool: 'planet',
+  universeResetToken: 0,
+  universePresetToken: 0,
 
   setMatterMode: (mode) => set({ matterMode: mode }),
   setInteractionMode: (mode) => set({ interactionMode: mode }),
@@ -61,4 +74,9 @@ export const useMatterStore = create<MatterState>((set) => ({
   togglePaused: () => set((s) => ({ paused: !s.paused })),
   setEasterEgg: (on) => set({ easterEgg: on }),
   setNoSign: (on) => set({ noSign: on }),
+  setUniverseTool: (tool) => set({ universeTool: tool }),
+  resetUniverse: () =>
+    set((state) => ({ universeResetToken: state.universeResetToken + 1 })),
+  createSolarSystem: () =>
+    set((state) => ({ universePresetToken: state.universePresetToken + 1 })),
 }))

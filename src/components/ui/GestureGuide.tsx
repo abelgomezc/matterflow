@@ -39,6 +39,15 @@ const BY_MODE: Record<MatterMode, GestureItem[]> = {
     { icon: '✊', name: 'Cerrar la mano', action: 'Agarrar / asfixiar el entorno' },
     AMEN,
   ],
+  create: [
+    { icon: '+', name: 'Elige abajo', action: 'Astro, luna o agujero negro' },
+    { icon: 'o', name: 'Pinza en espacio', action: 'Crear astro' },
+    { icon: 'o', name: 'Arrastrar y soltar', action: 'Lanzar / cambiar orbita' },
+    { icon: '*', name: 'Palma sobre astro', action: 'Agrandarlo' },
+    { icon: 'S', name: 'Sistema solar', action: 'Crear simulacion completa' },
+    { icon: 'X', name: 'Dos punos', action: 'Limpiar universo' },
+    AMEN,
+  ],
 }
 
 const MODE_NAME: Record<MatterMode, string> = {
@@ -46,6 +55,7 @@ const MODE_NAME: Record<MatterMode, string> = {
   plasma: 'Plasma',
   rays: 'Rayos',
   force: 'Fuerza',
+  create: 'Crear materia',
 }
 
 export default function GestureGuide() {
