@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import type {
   MatterMode,
   InteractionMode,
+  PlanetVariant,
   UniverseTool,
 } from '../types/matter.types'
 
@@ -22,6 +23,7 @@ interface MatterState {
   easterEgg: boolean // seña de Victoria -> frase + imagenes
   noSign: boolean // seña no reconocida -> mensaje gracioso
   universeTool: UniverseTool
+  planetVariant: PlanetVariant
   universeResetToken: number
   universePresetToken: number
 
@@ -39,6 +41,7 @@ interface MatterState {
   setEasterEgg: (on: boolean) => void
   setNoSign: (on: boolean) => void
   setUniverseTool: (tool: UniverseTool) => void
+  setPlanetVariant: (variant: PlanetVariant) => void
   resetUniverse: () => void
   createSolarSystem: () => void
 }
@@ -58,6 +61,7 @@ export const useMatterStore = create<MatterState>((set) => ({
   easterEgg: false,
   noSign: false,
   universeTool: 'planet',
+  planetVariant: 'rocky',
   universeResetToken: 0,
   universePresetToken: 0,
 
@@ -75,6 +79,7 @@ export const useMatterStore = create<MatterState>((set) => ({
   setEasterEgg: (on) => set({ easterEgg: on }),
   setNoSign: (on) => set({ noSign: on }),
   setUniverseTool: (tool) => set({ universeTool: tool }),
+  setPlanetVariant: (variant) => set({ planetVariant: variant }),
   resetUniverse: () =>
     set((state) => ({ universeResetToken: state.universeResetToken + 1 })),
   createSolarSystem: () =>

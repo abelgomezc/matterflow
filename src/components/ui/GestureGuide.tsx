@@ -48,6 +48,12 @@ const BY_MODE: Record<MatterMode, GestureItem[]> = {
     { icon: 'X', name: 'Dos punos', action: 'Limpiar universo' },
     AMEN,
   ],
+  digitalShadow: [
+    { icon: 'DS', name: 'Rostro frente a camara', action: 'Copia verde lateral' },
+    { icon: 'PT', name: 'Mover la cabeza', action: 'Particulas siguen rostro' },
+    { icon: 'GL', name: 'Sin rostro', action: 'Mascara demo procedural' },
+    AMEN,
+  ],
 }
 
 const MODE_NAME: Record<MatterMode, string> = {
@@ -56,6 +62,7 @@ const MODE_NAME: Record<MatterMode, string> = {
   rays: 'Rayos',
   force: 'Fuerza',
   create: 'Crear materia',
+  digitalShadow: 'Digital Shadow',
 }
 
 export default function GestureGuide() {

@@ -4,6 +4,11 @@
 // (c) 2026 Abel Gomez
 import { useEffect, useRef } from 'react'
 import { useHandTracking } from '../../hooks/useHandTracking'
+import { useFaceTracking, type FaceData } from '../../hooks/useFaceTracking'
+import {
+  usePersonSegmentation,
+  type PersonMask,
+} from '../../hooks/usePersonSegmentation'
 import {
   detectGesture,
   gestureToMode,
@@ -23,6 +28,12 @@ export const handLandmarksBus: { hands: HandData[] } = { hands: [] }
 /** Publica el elemento <video> de la camara para usarlo como textura WebGL
  *  (p.ej. el modo Fuerza distorsiona este feed). */
 export const cameraBus: { video: HTMLVideoElement | null } = { video: null }
+
+/** Publica el rostro detectado para efectos creativos tipo Digital Shadow. */
+export const faceLandmarksBus: { faces: FaceData[] } = { faces: [] }
+
+/** Publica la mascara de persona/cuerpo para Digital Shadow. */
+export const personMaskBus: { mask: PersonMask | null } = { mask: null }
 
 const VIRTUAL_W = 1280
 const VIRTUAL_H = 720
@@ -125,6 +136,18 @@ export default function HandTracker() {
 
   const { hands, isReady, error, startDetection, stopDetection } =
     useHandTracking(videoRef)
+  const {
+    faces,
+    error: faceError,
+    startDetection: startFaceDetection,
+    stopDetection: stopFaceDetection,
+  } = useFaceTracking(videoRef)
+  const {
+    mask: personMask,
+    error: segmentationError,
+    startSegmentation,
+    stopSegmentation,
+  } = usePersonSegmentation(videoRef)
 
   // Arranca/detiene la webcam segun cameraActive
   useEffect(() => {
@@ -162,7 +185,39 @@ export default function HandTracker() {
     return () => {
       cancelled = true
     }
-  }, [cameraActive, startDetection, stopDetection, setCameraActive])
+  }, [
+    cameraActive,
+    startDetection,
+    stopDetection,
+    setCameraActive,
+  ])
+
+  useEffect(() => {
+    if (cameraActive && matterMode === 'digitalShadow') {
+      startFaceDetection()
+      startSegmentation()
+    } else {
+      stopFaceDetection()
+      stopSegmentation()
+      faceLandmarksBus.faces = []
+      personMaskBus.mask = null
+    }
+  }, [
+    cameraActive,
+    matterMode,
+    startFaceDetection,
+    stopFaceDetection,
+    startSegmentation,
+    stopSegmentation,
+  ])
+
+  useEffect(() => {
+    faceLandmarksBus.faces = faces
+  }, [faces])
+
+  useEffect(() => {
+    personMaskBus.mask = personMask
+  }, [personMask])
 
   // Traduce manos detectadas -> punteros del bus, o activa el fallback
   useEffect(() => {
@@ -321,7 +376,10 @@ export default function HandTracker() {
   // Reporta errores de MediaPipe al HUD
   useEffect(() => {
     if (error) setCurrentGesture('MediaPipe no disponible')
-  }, [error, setCurrentGesture])
+    else if (matterMode === 'digitalShadow' && (faceError || segmentationError)) {
+      setCurrentGesture('Digital Shadow: rostro demo')
+    }
+  }, [error, faceError, segmentationError, matterMode, setCurrentGesture])
 
   // Publica el <video> para que otros efectos (modo Fuerza) lo usen como textura
   useEffect(() => {
@@ -352,8 +410,12 @@ export default function HandTracker() {
         height={VIRTUAL_H}
         data-ready={isReady}
       />
-      {/* Oscurece un poco el video para que la materia resalte */}
-      <div className="absolute inset-0 bg-mf-bg/45" />
+      {/* Oscurece un poco el video para que la materia resalte, excepto en Digital Shadow. */}
+      <div
+        className={`absolute inset-0 ${
+          matterMode === 'digitalShadow' ? 'bg-black/20' : 'bg-mf-bg/45'
+        }`}
+      />
     </div>
   )
 }

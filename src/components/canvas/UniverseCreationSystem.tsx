@@ -1,6 +1,6 @@
 // MatterFlow - creador de universos con gestos de mano. (c) 2026 Abel Gomez
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Stars, useTexture } from '@react-three/drei'
+import { Line, Stars, useTexture } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { handLandmarksBus } from '../camera/HandTracker'
@@ -8,7 +8,7 @@ import { useMatterStore } from '../../store/matterStore'
 import { dist2D } from '../../utils/handUtils'
 import type { HandData } from '../../hooks/useHandTracking'
 import type { Landmark } from '../../types/hand.types'
-import type { UniverseTool } from '../../types/matter.types'
+import type { PlanetVariant, UniverseTool } from '../../types/matter.types'
 
 const HOLD_TO_CLEAR_MS = 1200
 const GRAVITY = 0.34
@@ -33,6 +33,8 @@ interface SpaceBody {
   mass: number
   damage: number
   hasRing: boolean
+  planetVariant?: PlanetVariant
+  orbit?: OrbitState
 }
 
 interface Impact {
@@ -40,6 +42,75 @@ interface Impact {
   position: THREE.Vector3
   color: string
   size: number
+}
+
+interface OrbitState {
+  parentId: number
+  semiMajorAxis: number
+  eccentricity: number
+  inclination: number
+  phase: number
+  angularSpeed: number
+  clockwise: boolean
+}
+
+const PLANET_VARIANT_STYLE: Record<
+  PlanetVariant,
+  {
+    colors: string[]
+    atmosphere: string
+    ringChance: number
+    roughness: number
+    metalness: number
+    emissive: string
+    emissiveIntensity: number
+  }
+> = {
+  rocky: {
+    colors: ['#8A7057', '#6F5A45', '#A38363', '#4F3B2D'],
+    atmosphere: '#C7D2FE',
+    ringChance: 0.08,
+    roughness: 0.95,
+    metalness: 0.02,
+    emissive: '#000000',
+    emissiveIntensity: 0,
+  },
+  ocean: {
+    colors: ['#0F5E9C', '#1D7FBF', '#2A9D8F', '#144E75'],
+    atmosphere: '#7DD3FC',
+    ringChance: 0.03,
+    roughness: 0.54,
+    metalness: 0.01,
+    emissive: '#00111F',
+    emissiveIntensity: 0.04,
+  },
+  gasGiant: {
+    colors: ['#C6925B', '#D8B37C', '#9A6A45', '#E0C097'],
+    atmosphere: '#FDE68A',
+    ringChance: 0.55,
+    roughness: 0.68,
+    metalness: 0,
+    emissive: '#2A1404',
+    emissiveIntensity: 0.05,
+  },
+  ice: {
+    colors: ['#BFE7FF', '#7DD3FC', '#D9F99D', '#E0F2FE'],
+    atmosphere: '#BAE6FD',
+    ringChance: 0.22,
+    roughness: 0.42,
+    metalness: 0.02,
+    emissive: '#082F49',
+    emissiveIntensity: 0.04,
+  },
+  volcanic: {
+    colors: ['#4A1D12', '#7C2D12', '#C2410C', '#1C1917'],
+    atmosphere: '#FB923C',
+    ringChance: 0.12,
+    roughness: 0.88,
+    metalness: 0.03,
+    emissive: '#FF3B00',
+    emissiveIntensity: 0.22,
+  },
 }
 
 const fingerExtended = (landmarks: Landmark[], tip: number, pip: number) =>
@@ -61,6 +132,56 @@ const poseOf = (hand: HandData) => {
     fist: !index && !middle && !ring && !pinky && !pinching,
     pinching,
   }
+}
+
+function OrbitPath({
+  body,
+  parent,
+}: {
+  body: SpaceBody
+  parent: SpaceBody
+}) {
+  const group = useRef<THREE.Group>(null)
+  const points = useMemo(() => {
+    if (!body.orbit) return []
+
+    const segments = 160
+    const result: THREE.Vector3[] = []
+    const a = body.orbit.semiMajorAxis
+    const e = body.orbit.eccentricity
+    const b = a * Math.sqrt(1 - e * e)
+    const focusOffset = a * e
+
+    for (let i = 0; i <= segments; i += 1) {
+      const angle = (i / segments) * Math.PI * 2
+      result.push(
+        new THREE.Vector3(
+          Math.cos(angle) * a - focusOffset,
+          Math.sin(angle) * b * Math.cos(body.orbit.inclination),
+          Math.sin(angle) * b * Math.sin(body.orbit.inclination)
+        )
+      )
+    }
+    return result
+  }, [body.orbit])
+
+  useFrame(() => {
+    if (group.current) group.current.position.copy(parent.position)
+  })
+
+  if (!body.orbit || points.length === 0) return null
+
+  return (
+    <group ref={group}>
+      <Line
+        points={points}
+        color={body.kind === 'moon' ? '#94A3B8' : '#38BDF8'}
+        transparent
+        opacity={body.kind === 'moon' ? 0.22 : 0.32}
+        lineWidth={1}
+      />
+    </group>
+  )
 }
 
 function SpaceBodyView({
@@ -118,20 +239,46 @@ function SpaceBodyView({
             <meshStandardMaterial
               map={planetTexture}
               bumpMap={planetTexture}
-              bumpScale={0.045}
+              bumpScale={body.planetVariant === 'gasGiant' ? 0.012 : 0.07}
               color={body.color}
-              emissive="#7F1D1D"
-              emissiveIntensity={body.damage * 0.8}
-              metalness={0.02}
-              roughness={0.82}
+              emissive={
+                body.damage > 0.2
+                  ? '#7F1D1D'
+                  : PLANET_VARIANT_STYLE[body.planetVariant ?? 'rocky'].emissive
+              }
+              emissiveIntensity={
+                body.damage * 0.9 +
+                PLANET_VARIANT_STYLE[body.planetVariant ?? 'rocky']
+                  .emissiveIntensity
+              }
+              metalness={
+                PLANET_VARIANT_STYLE[body.planetVariant ?? 'rocky'].metalness
+              }
+              roughness={
+                PLANET_VARIANT_STYLE[body.planetVariant ?? 'rocky'].roughness
+              }
             />
           </mesh>
+          {body.planetVariant === 'gasGiant' && (
+            <mesh scale={[1.012, 1.012, 1.012]} rotation={[0, 0, 0.08]}>
+              <sphereGeometry args={[1, 64, 32]} />
+              <meshBasicMaterial
+                color="#2B1A10"
+                transparent
+                opacity={0.18}
+                blending={THREE.MultiplyBlending}
+                depthWrite={false}
+              />
+            </mesh>
+          )}
           <mesh scale={1.035}>
             <sphereGeometry args={[1, 48, 36]} />
             <meshPhysicalMaterial
-              color="#7DD3FC"
+              color={
+                PLANET_VARIANT_STYLE[body.planetVariant ?? 'rocky'].atmosphere
+              }
               transparent
-              opacity={0.1}
+              opacity={body.planetVariant === 'rocky' ? 0.055 : 0.13}
               transmission={0.2}
               side={THREE.BackSide}
               depthWrite={false}
@@ -319,6 +466,7 @@ export default function UniverseCreationSystem() {
   const setCurrentGesture = useMatterStore((state) => state.setCurrentGesture)
   const setParticleCount = useMatterStore((state) => state.setParticleCount)
   const universeTool = useMatterStore((state) => state.universeTool)
+  const planetVariant = useMatterStore((state) => state.planetVariant)
   const universeResetToken = useMatterStore(
     (state) => state.universeResetToken
   )
@@ -363,6 +511,7 @@ export default function UniverseCreationSystem() {
     position: THREE.Vector3,
     radius: number,
     initialVelocity?: THREE.Vector3,
+    variant: PlanetVariant = planetVariant,
     sync = true
   ): SpaceBody => {
     // Mantiene fluida la escena incluso después de una sesión larga.
@@ -372,7 +521,7 @@ export default function UniverseCreationSystem() {
     }
     const palette: Record<BodyKind, string[]> = {
       sun: ['#FDB813', '#FF7A1A', '#FFE8A3', '#A5D8FF', '#FFB4A2'],
-      planet: ['#FFFFFF', '#FFD6A5', '#BDE0FE', '#D8F3DC', '#FFADAD'],
+      planet: PLANET_VARIANT_STYLE[variant].colors,
       star: ['#F8FAFC', '#A5F3FC', '#DDD6FE', '#FDE68A'],
       meteor: ['#78716C', '#A8A29E', '#92400E'],
       moon: ['#D6D3D1', '#A8A29E', '#E7E5E4'],
@@ -382,6 +531,7 @@ export default function UniverseCreationSystem() {
     const colors = palette[kind]
     const color = colors[nextId.current % colors.length]
     const velocity = initialVelocity?.clone() ?? new THREE.Vector3()
+    let orbit: OrbitState | undefined
 
     if (!initialVelocity && kind === 'planet') {
       const suns = bodiesRef.current.filter(
@@ -393,6 +543,20 @@ export default function UniverseCreationSystem() {
       if (sun) {
         const radial = position.clone().sub(sun.position)
         const distance = Math.max(radial.length(), 0.8)
+        const eccentricity = THREE.MathUtils.clamp(
+          Math.abs(radial.x + radial.y) / Math.max(distance * 7, 1),
+          0.02,
+          0.28
+        )
+        orbit = {
+          parentId: sun.id,
+          semiMajorAxis: distance,
+          eccentricity,
+          inclination: THREE.MathUtils.clamp(radial.z / distance, -0.35, 0.35),
+          phase: Math.atan2(radial.y, radial.x),
+          angularSpeed: Math.sqrt((GRAVITY * sun.mass) / distance ** 3),
+          clockwise: false,
+        }
         velocity
           .set(-radial.y, radial.x, 0)
           .normalize()
@@ -409,6 +573,15 @@ export default function UniverseCreationSystem() {
       if (planet) {
         const radial = position.clone().sub(planet.position)
         const distance = Math.max(radial.length(), planet.radius + radius + 0.15)
+        orbit = {
+          parentId: planet.id,
+          semiMajorAxis: distance,
+          eccentricity: 0.04 + Math.random() * 0.12,
+          inclination: THREE.MathUtils.clamp(radial.z / distance, -0.45, 0.45),
+          phase: Math.atan2(radial.y, radial.x),
+          angularSpeed: Math.sqrt((GRAVITY * planet.mass) / distance ** 3),
+          clockwise: nextId.current % 2 === 0,
+        }
         velocity
           .set(-radial.y, radial.x, 0)
           .normalize()
@@ -444,7 +617,11 @@ export default function UniverseCreationSystem() {
       spin: (Math.random() - 0.5) * 1.2,
       mass: density[kind] * Math.max(radius ** 3, 0.025),
       damage: 0,
-      hasRing: kind === 'planet' && Math.random() < 0.38,
+      hasRing:
+        kind === 'planet' &&
+        Math.random() < PLANET_VARIANT_STYLE[variant].ringChance,
+      planetVariant: kind === 'planet' ? variant : undefined,
+      orbit,
     }
     bodiesRef.current.push(body)
     nextId.current += 1
@@ -461,13 +638,60 @@ export default function UniverseCreationSystem() {
     status('Universo: espacio limpio', now)
   }
 
+  const updateOrbitingBodies = (delta: number) => {
+    for (let pass = 0; pass < 2; pass += 1) {
+      for (const body of bodiesRef.current) {
+        if (!body.orbit || body.id === draggedBody.current) continue
+
+        const parent = bodiesRef.current.find(
+          (candidate) => candidate.id === body.orbit?.parentId
+        )
+        if (!parent) {
+          body.orbit = undefined
+          continue
+        }
+
+        const direction = body.orbit.clockwise ? -1 : 1
+        body.orbit.phase += body.orbit.angularSpeed * delta * direction
+
+        const a = body.orbit.semiMajorAxis
+        const e = body.orbit.eccentricity
+        const b = a * Math.sqrt(1 - e * e)
+        const focusOffset = a * e
+        const phase = body.orbit.phase
+        const local = new THREE.Vector3(
+          Math.cos(phase) * a - focusOffset,
+          Math.sin(phase) * b * Math.cos(body.orbit.inclination),
+          Math.sin(phase) * b * Math.sin(body.orbit.inclination)
+        )
+        const tangent = new THREE.Vector3(
+          -Math.sin(phase) * a,
+          Math.cos(phase) * b * Math.cos(body.orbit.inclination),
+          Math.cos(phase) * b * Math.sin(body.orbit.inclination)
+        )
+          .multiplyScalar(body.orbit.angularSpeed * direction)
+
+        body.position.copy(parent.position).add(local)
+        body.velocity.copy(parent.velocity).add(tangent)
+      }
+    }
+  }
+
   const createSolarSystemPreset = () => {
     bodiesRef.current = []
     bodyGroups.current.clear()
     const center = new THREE.Vector3(0, 0, 0)
-    const sun = addBody('sun', center, 0.72, new THREE.Vector3(), false)
+    const sun = addBody('sun', center, 0.72, new THREE.Vector3(), 'rocky', false)
     const maxOrbit = Math.min(viewport.width * 0.42, viewport.height * 0.46)
-    const planetCount = 5
+    const planetCount = 6
+    const variants: PlanetVariant[] = [
+      'rocky',
+      'ocean',
+      'gasGiant',
+      'ice',
+      'volcanic',
+      'gasGiant',
+    ]
 
     for (let i = 0; i < planetCount; i += 1) {
       const distance = 1.25 + (i / (planetCount - 1)) * (maxOrbit - 1.25)
@@ -487,10 +711,20 @@ export default function UniverseCreationSystem() {
       const planet = addBody(
         'planet',
         position,
-        0.25 + i * 0.055,
+        variants[i] === 'gasGiant' ? 0.48 + i * 0.035 : 0.22 + i * 0.045,
         velocity,
+        variants[i],
         false
       )
+      planet.orbit = {
+        parentId: sun.id,
+        semiMajorAxis: distance,
+        eccentricity: [0.05, 0.02, 0.09, 0.14, 0.06, 0.11][i],
+        inclination,
+        phase: angle,
+        angularSpeed: Math.sqrt((GRAVITY * sun.mass) / distance ** 3),
+        clockwise: false,
+      }
 
       const moonCount = i % 3
       for (let moonIndex = 0; moonIndex < moonCount; moonIndex += 1) {
@@ -517,11 +751,20 @@ export default function UniverseCreationSystem() {
               Math.cos(moonAngle) * moonSpeed * Math.sin(inclination)
             )
           )
-        addBody('moon', moonPosition, 0.09, moonVelocity, false)
+        const moon = addBody('moon', moonPosition, 0.09, moonVelocity, 'rocky', false)
+        moon.orbit = {
+          parentId: planet.id,
+          semiMajorAxis: moonDistance,
+          eccentricity: 0.04 + moonIndex * 0.03,
+          inclination: inclination + 0.12,
+          phase: moonAngle,
+          angularSpeed: Math.sqrt((GRAVITY * planet.mass) / moonDistance ** 3),
+          clockwise: moonIndex % 2 === 1,
+        }
       }
     }
     syncBodies()
-    status('Universo: sistema solar dinamico creado')
+    status('Universo: sistema solar con orbitas reales creado')
   }
 
   const spawnImpact = (
@@ -690,6 +933,7 @@ export default function UniverseCreationSystem() {
           fragment.position,
           fragment.radius,
           fragment.velocity,
+          'rocky',
           false
         )
       }
@@ -750,6 +994,8 @@ export default function UniverseCreationSystem() {
         if (!pinchLatched.current) {
           const selected = nearestBody(indexPosition, 1.05)
           if (selected) {
+            selected.orbit = undefined
+            syncBodies()
             draggedBody.current = selected.id
             lastDragPosition.current.copy(indexPosition)
           } else {
@@ -804,6 +1050,7 @@ export default function UniverseCreationSystem() {
 
     const simulationDelta = Math.min(delta, 0.033)
     const simulatedBodies = bodiesRef.current
+    updateOrbitingBodies(simulationDelta)
     const accelerations = new Map<number, THREE.Vector3>()
     for (const body of simulatedBodies) {
       accelerations.set(body.id, new THREE.Vector3())
@@ -815,12 +1062,12 @@ export default function UniverseCreationSystem() {
         const direction = b.position.clone().sub(a.position)
         const distanceSquared = Math.max(direction.lengthSq(), 0.12)
         direction.normalize()
-        if (a.id !== draggedBody.current) {
+        if (a.id !== draggedBody.current && !a.orbit) {
           accelerations
             .get(a.id)
             ?.addScaledVector(direction, (GRAVITY * b.mass) / distanceSquared)
         }
-        if (b.id !== draggedBody.current) {
+        if (b.id !== draggedBody.current && !b.orbit) {
           accelerations
             .get(b.id)
             ?.addScaledVector(direction, (-GRAVITY * a.mass) / distanceSquared)
@@ -828,8 +1075,98 @@ export default function UniverseCreationSystem() {
       }
     }
 
+    const physicsBreakups: SpaceBody[] = []
     for (const body of simulatedBodies) {
-      if (body.id !== draggedBody.current) {
+      if (body.kind === 'blackHole' || body.kind === 'debris') continue
+
+      const nearestBlackHole = simulatedBodies
+        .filter((candidate) => candidate.kind === 'blackHole')
+        .sort(
+          (a, b) =>
+            a.position.distanceTo(body.position) -
+            b.position.distanceTo(body.position)
+        )[0]
+
+      if (nearestBlackHole) {
+        const distance = nearestBlackHole.position.distanceTo(body.position)
+        const rocheLimit =
+          nearestBlackHole.radius *
+          2.6 *
+          Math.cbrt(nearestBlackHole.mass / Math.max(body.mass, 0.05))
+
+        if (
+          distance < rocheLimit &&
+          distance > nearestBlackHole.radius * 1.25
+        ) {
+          body.damage += simulationDelta * 0.9
+          body.velocity.addScaledVector(
+            body.position.clone().sub(nearestBlackHole.position).normalize(),
+            simulationDelta * 0.2
+          )
+          status('Evento: fuerzas de marea estiran y rompen materia', now)
+        }
+      }
+
+      const nearestStar = simulatedBodies
+        .filter(
+          (candidate) => candidate.kind === 'sun' || candidate.kind === 'star'
+        )
+        .sort(
+          (a, b) =>
+            a.position.distanceTo(body.position) -
+            b.position.distanceTo(body.position)
+        )[0]
+
+      if (nearestStar) {
+        const distance = nearestStar.position.distanceTo(body.position)
+        const heatLimit = nearestStar.radius * 2.7
+        if (distance < heatLimit) {
+          const heat = (heatLimit - distance) / heatLimit
+          body.damage += heat * simulationDelta * 0.75
+          body.radius = Math.max(
+            0.04,
+            body.radius - heat * simulationDelta * 0.025
+          )
+          body.mass = Math.max(
+            0.015,
+            body.mass * (1 - heat * simulationDelta * 0.025)
+          )
+          if (Math.random() < heat * 0.025) {
+            spawnImpact(body.position, '#FDBA74', Math.max(0.18, body.radius))
+          }
+          status('Evento: radiacion estelar evapora la superficie', now)
+        }
+      }
+
+      if (body.damage > 1.15) physicsBreakups.push(body)
+    }
+
+    if (physicsBreakups.length > 0) {
+      const ids = new Set(physicsBreakups.map((body) => body.id))
+      bodiesRef.current = bodiesRef.current.filter((body) => !ids.has(body.id))
+      for (const body of physicsBreakups) {
+        const count = Math.min(10, Math.max(5, Math.round(body.radius * 12)))
+        for (let index = 0; index < count; index += 1) {
+          const angle = (index / count) * Math.PI * 2
+          addBody(
+            'debris',
+            body.position.clone(),
+            Math.max(0.035, body.radius / count),
+            body.velocity.clone().add(
+              new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0)
+                .multiplyScalar(0.35 + Math.random() * 0.45)
+            ),
+            'rocky',
+            false
+          )
+        }
+        spawnImpact(body.position, '#C084FC', body.radius * 1.4)
+      }
+      syncBodies()
+    }
+
+    for (const body of simulatedBodies) {
+      if (body.id !== draggedBody.current && !body.orbit) {
         body.velocity.addScaledVector(
           accelerations.get(body.id) ?? new THREE.Vector3(),
           simulationDelta
@@ -850,6 +1187,16 @@ export default function UniverseCreationSystem() {
     const halfWidth = viewport.width / 2
     const halfHeight = viewport.height / 2
     for (const body of bodiesRef.current) {
+      if (body.orbit) {
+        const group = bodyGroups.current.get(body.id)
+        if (group) {
+          group.position.copy(body.position)
+          group.scale.setScalar(body.radius)
+          group.rotation.y += body.spin * delta
+        }
+        continue
+      }
+
       const limitX = Math.max(halfWidth - body.radius, 0.5)
       const limitY = Math.max(halfHeight - body.radius, 0.5)
       if (Math.abs(body.position.x) > limitX) {
@@ -879,15 +1226,29 @@ export default function UniverseCreationSystem() {
 
   return (
     <>
+      <mesh>
+        <sphereGeometry args={[70, 48, 32]} />
+        <meshBasicMaterial color="#000006" side={THREE.BackSide} />
+      </mesh>
+
       <Stars
         radius={45}
         depth={30}
-        count={900}
-        factor={2}
-        saturation={0.35}
+        count={1600}
+        factor={2.4}
+        saturation={0.18}
         fade
-        speed={0.25}
+        speed={0.12}
       />
+
+      {bodies.map((body) => {
+        if (!body.orbit) return null
+        const parent = bodies.find(
+          (candidate) => candidate.id === body.orbit?.parentId
+        )
+        if (!parent) return null
+        return <OrbitPath key={`orbit-${body.id}`} body={body} parent={parent} />
+      })}
 
       {bodies.map((body) => (
         <SpaceBodyView

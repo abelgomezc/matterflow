@@ -1,7 +1,13 @@
 // MatterFlow - tipos de materia y particulas. (c) 2026 Abel Gomez
 import * as THREE from 'three'
 
-export type MatterMode = 'particles' | 'plasma' | 'rays' | 'force' | 'create'
+export type MatterMode =
+  | 'particles'
+  | 'plasma'
+  | 'rays'
+  | 'force'
+  | 'create'
+  | 'digitalShadow'
 export type InteractionMode = 'attract' | 'repel' | 'vortex' | 'freeze' | 'create'
 export type UniverseTool =
   | 'planet'
@@ -10,6 +16,13 @@ export type UniverseTool =
   | 'meteor'
   | 'moon'
   | 'blackHole'
+
+export type PlanetVariant =
+  | 'rocky'
+  | 'ocean'
+  | 'gasGiant'
+  | 'ice'
+  | 'volcanic'
 
 /** Particula 2D con fisica clasica (motor de utils/physicsUtils). */
 export interface Particle {

@@ -3,14 +3,14 @@
 // aberracion cromatica. Renderiza el sistema de materia activo con una
 // transicion de fundido (Framer Motion en la capa DOM lo acompana).
 import { Suspense } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import {
   EffectComposer,
   Bloom,
   ChromaticAberration,
 } from '@react-three/postprocessing'
 import { BlendFunction } from 'postprocessing'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { useMatterStore } from '../../store/matterStore'
 import ParticleSystem from './ParticleSystem'
@@ -18,6 +18,7 @@ import PlasmaSystem from './PlasmaSystem'
 import RaysSystem from './RaysSystem'
 import ForceSystem from './ForceSystem'
 import UniverseCreationSystem from './UniverseCreationSystem'
+import DigitalShadowSystem from './DigitalShadowSystem'
 
 /** Cuenta FPS y lo publica al store (throttle ~5 veces/seg). */
 function FpsMeter() {
@@ -47,10 +48,26 @@ function ActiveMatter() {
       return <ForceSystem />
     case 'create':
       return <UniverseCreationSystem />
+    case 'digitalShadow':
+      return <DigitalShadowSystem />
     case 'particles':
     default:
       return <ParticleSystem />
   }
+}
+
+function ClearColorByMode() {
+  const mode = useMatterStore((s) => s.matterMode)
+  const { gl } = useThree()
+
+  useEffect(() => {
+    gl.setClearColor(
+      new THREE.Color('#000004'),
+      mode === 'create' ? 1 : 0
+    )
+  }, [gl, mode])
+
+  return null
 }
 
 export default function MatterScene() {
@@ -79,6 +96,7 @@ export default function MatterScene() {
         <ActiveMatter />
       </Suspense>
 
+      <ClearColorByMode />
       <FpsMeter />
 
       <Post />
