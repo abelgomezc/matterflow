@@ -413,7 +413,7 @@ export default function HandTracker() {
       {/* Oscurece un poco el video para que la materia resalte, excepto en Digital Shadow. */}
       <div
         className={`absolute inset-0 ${
-          matterMode === 'digitalShadow' ? 'bg-black/20' : 'bg-mf-bg/45'
+          matterMode === 'digitalShadow' ? 'bg-black' : 'bg-mf-bg/45'
         }`}
       />
     </div>
