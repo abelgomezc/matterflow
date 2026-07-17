@@ -4,8 +4,14 @@
 // (c) 2026 Abel Gomez
 import { useEffect, useRef } from 'react'
 import { useMatterStore } from '../../store/matterStore'
-import { cameraBus, faceLandmarksBus, handLandmarksBus } from './HandTracker'
+import {
+  cameraBus,
+  faceLandmarksBus,
+  handLandmarksBus,
+  poseLandmarksBus,
+} from './HandTracker'
 import type { Landmark } from '../../types/hand.types'
+import type { PoseLandmark } from '../../hooks/usePoseTracking'
 
 const MINI_W = 160
 const MINI_H = 120
@@ -44,6 +50,18 @@ const MIDLINE = [
 const FINGER_TIPS = [4, 8, 12, 16, 20]
 const DUST_DURATION = 920
 const DUST_COOLDOWN = 560
+const BODY_CONNECTIONS: [number, number][] = [
+  [7, 8], [0, 7], [0, 8], // cabeza
+  [0, 11], [0, 12], // cuello hacia hombros
+  [11, 12], // hombros
+  [11, 13], [13, 15], // brazo izquierdo
+  [12, 14], [14, 16], // brazo derecho
+  [11, 23], [12, 24], [23, 24], // torso / cadera
+  [23, 25], [25, 27], [27, 29], [29, 31], [27, 31], // pierna izquierda
+  [24, 26], [26, 28], [28, 30], [30, 32], [28, 32], // pierna derecha
+]
+const BODY_CORE = [11, 12, 24, 23, 11]
+const TORSO_RIBS = [0.25, 0.5, 0.75]
 
 interface FaceDustFx {
   startedAt: number
@@ -139,6 +157,201 @@ const drawLightning = (
     ctx.lineWidth = (pass === 0 ? 9 : pass === 1 ? 4 : 1.6) * scale
     ctx.stroke()
   }
+  ctx.restore()
+}
+
+const posePointVisible = (point?: PoseLandmark) =>
+  Boolean(point && (point.visibility ?? 1) > 0.32)
+
+const drawInterpolatedBone = (
+  ctx: CanvasRenderingContext2D,
+  a: PoseLandmark,
+  b: PoseLandmark,
+  width: number,
+  height: number,
+  large: boolean,
+  pulse: number
+) => {
+  const scale = large ? Math.max(width, height) / 900 : 1
+  const ax = a.x * width
+  const ay = a.y * height
+  const bx = b.x * width
+  const by = b.y * height
+  const distance = Math.hypot(bx - ax, by - ay)
+  const segments = Math.max(2, Math.min(8, Math.ceil(distance / (large ? 70 : 24))))
+
+  ctx.beginPath()
+  ctx.moveTo(ax, ay)
+  ctx.lineTo(bx, by)
+  ctx.strokeStyle = `rgba(120,255,0,${0.42 * pulse})`
+  ctx.lineWidth = Math.max(1, 1.65 * scale)
+  ctx.stroke()
+
+  for (let i = 0; i <= segments; i += 1) {
+    const t = i / segments
+    const x = ax + (bx - ax) * t
+    const y = ay + (by - ay) * t
+    const endpoint = i === 0 || i === segments
+    ctx.fillStyle = endpoint
+      ? `rgba(215,255,0,${0.82 * pulse})`
+      : `rgba(120,255,0,${0.55 * pulse})`
+    ctx.beginPath()
+    ctx.arc(x, y, (endpoint ? 2.8 : 1.9) * scale, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+const lerpPosePoint = (a: PoseLandmark, b: PoseLandmark, t: number) => ({
+  x: a.x + (b.x - a.x) * t,
+  y: a.y + (b.y - a.y) * t,
+  z: a.z + (b.z - a.z) * t,
+})
+
+const drawPoseRib = (
+  ctx: CanvasRenderingContext2D,
+  left: PoseLandmark,
+  right: PoseLandmark,
+  width: number,
+  height: number,
+  scale: number,
+  pulse: number
+) => {
+  ctx.strokeStyle = `rgba(120,255,0,${0.2 * pulse})`
+  ctx.lineWidth = Math.max(0.8, 1 * scale)
+  ctx.beginPath()
+  ctx.moveTo(left.x * width, left.y * height)
+  ctx.lineTo(right.x * width, right.y * height)
+  ctx.stroke()
+
+  for (const point of [left, right, lerpPosePoint(left, right, 0.5)]) {
+    ctx.fillStyle = `rgba(120,255,0,${0.38 * pulse})`
+    ctx.beginPath()
+    ctx.arc(point.x * width, point.y * height, Math.max(1, 1.35 * scale), 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+const drawPoseHead = (
+  ctx: CanvasRenderingContext2D,
+  landmarks: PoseLandmark[],
+  width: number,
+  height: number,
+  scale: number,
+  pulse: number
+) => {
+  const nose = landmarks[0]
+  const leftEar = landmarks[7]
+  const rightEar = landmarks[8]
+  const leftShoulder = landmarks[11]
+  const rightShoulder = landmarks[12]
+  if (!posePointVisible(nose) || !posePointVisible(leftShoulder) || !posePointVisible(rightShoulder)) {
+    return
+  }
+
+  const shoulderCenter = lerpPosePoint(leftShoulder, rightShoulder, 0.5)
+  const neck = lerpPosePoint(nose, shoulderCenter, 0.58)
+  const headWidth = posePointVisible(leftEar) && posePointVisible(rightEar)
+    ? Math.hypot((leftEar.x - rightEar.x) * width, (leftEar.y - rightEar.y) * height) * 0.78
+    : Math.hypot((leftShoulder.x - rightShoulder.x) * width, (leftShoulder.y - rightShoulder.y) * height) * 0.36
+  const headHeight = Math.max(headWidth * 1.25, 28 * scale)
+
+  ctx.strokeStyle = `rgba(215,255,0,${0.38 * pulse})`
+  ctx.lineWidth = Math.max(1, 1.25 * scale)
+  ctx.beginPath()
+  ctx.ellipse(
+    nose.x * width,
+    nose.y * height + headHeight * 0.08,
+    Math.max(12 * scale, headWidth * 0.5),
+    headHeight * 0.52,
+    0,
+    0,
+    Math.PI * 2
+  )
+  ctx.stroke()
+
+  drawInterpolatedBone(ctx, neck, shoulderCenter, width, height, true, pulse)
+}
+
+const drawPoseBody = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  large: boolean,
+  now: number
+) => {
+  const scale = large ? Math.max(width, height) / 900 : 1
+  const pulse = 0.72 + Math.sin(now * 0.004) * 0.16
+  const poses = poseLandmarksBus.poses
+  if (poses.length === 0) return
+
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+
+  poses.forEach((pose, poseIndex) => {
+    const landmarks = pose.landmarks
+    const poseAlpha = poseIndex === 0 ? 1 : 0.72
+    const posePulse = pulse * poseAlpha
+
+    drawPoseHead(ctx, landmarks, width, height, scale, posePulse)
+
+    ctx.strokeStyle = `rgba(215,255,0,${0.2 * posePulse})`
+    ctx.lineWidth = Math.max(0.9, 1.2 * scale)
+    ctx.beginPath()
+    BODY_CORE.forEach((id, index) => {
+      const point = landmarks[id]
+      if (!posePointVisible(point)) return
+      const x = point.x * width
+      const y = point.y * height
+      if (index === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.stroke()
+
+    const leftShoulder = landmarks[11]
+    const rightShoulder = landmarks[12]
+    const leftHip = landmarks[23]
+    const rightHip = landmarks[24]
+    if (
+      posePointVisible(leftShoulder) &&
+      posePointVisible(rightShoulder) &&
+      posePointVisible(leftHip) &&
+      posePointVisible(rightHip)
+    ) {
+      for (const t of TORSO_RIBS) {
+        drawPoseRib(
+          ctx,
+          lerpPosePoint(leftShoulder, leftHip, t),
+          lerpPosePoint(rightShoulder, rightHip, t),
+          width,
+          height,
+          scale,
+          posePulse
+        )
+      }
+    }
+
+    for (const [aId, bId] of BODY_CONNECTIONS) {
+      const a = landmarks[aId]
+      const b = landmarks[bId]
+      if (!posePointVisible(a) || !posePointVisible(b)) continue
+      drawInterpolatedBone(ctx, a, b, width, height, large, posePulse)
+    }
+
+    for (let i = 0; i < landmarks.length; i += 1) {
+      const point = landmarks[i]
+      if (!posePointVisible(point)) continue
+      const core = i === 0 || i === 11 || i === 12 || i === 23 || i === 24
+      ctx.fillStyle = core
+        ? `rgba(255,255,255,${0.58 * posePulse})`
+        : `rgba(215,255,0,${0.52 * posePulse})`
+      ctx.beginPath()
+      ctx.arc(point.x * width, point.y * height, (core ? 3.2 : 2.2) * scale, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  })
+
   ctx.restore()
 }
 
@@ -346,7 +559,8 @@ const drawOverlay = (
   large: boolean,
   includeVideo: boolean,
   fx: FaceDustFx | null,
-  now: number
+  now: number,
+  hideRepresentation: boolean
 ) => {
   ctx.clearRect(0, 0, width, height)
   ctx.lineCap = 'round'
@@ -361,6 +575,11 @@ const drawOverlay = (
     ctx.fillRect(0, 0, width, height)
   }
 
+  // En Digital Shadow el "screen mirror" muestra solo a la persona (recortada
+  // por la mascara de segmentacion). Sin esqueleto, rostro ni manos.
+  if (hideRepresentation) return
+
+  drawPoseBody(ctx, width, height, large, now)
   drawFace(ctx, faceLandmarksBus.faces[0]?.landmarks, width, height, large, fx, now)
   drawHands(ctx, width, height, large)
 }
@@ -410,14 +629,16 @@ export default function CameraOverlay() {
         if (fullCanvas && fullCtx) {
           const dpr = resizeCanvas(fullCanvas, window.innerWidth, window.innerHeight)
           fullCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-          drawOverlay(fullCtx, window.innerWidth, window.innerHeight, true, false, activeFx, now)
+          drawOverlay(fullCtx, window.innerWidth, window.innerHeight, true, false, activeFx, now, false)
         }
       }
 
       if (miniCanvas && miniCtx) {
         const dpr = resizeCanvas(miniCanvas, MINI_W, MINI_H)
         miniCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-        drawOverlay(miniCtx, MINI_W, MINI_H, false, isDigitalShadow, activeFx, now)
+        // En Digital Shadow el mini "screen mirror" oculta la capa de
+        // representacion (huesos/cara/manos); ya se ve en pantalla completa.
+        drawOverlay(miniCtx, MINI_W, MINI_H, false, isDigitalShadow, activeFx, now, isDigitalShadow)
       }
 
       raf = requestAnimationFrame(draw)

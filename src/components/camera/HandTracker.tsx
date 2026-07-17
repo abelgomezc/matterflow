@@ -5,6 +5,7 @@
 import { useEffect, useRef } from 'react'
 import { useHandTracking } from '../../hooks/useHandTracking'
 import { useFaceTracking, type FaceData } from '../../hooks/useFaceTracking'
+import { usePoseTracking, type PoseData } from '../../hooks/usePoseTracking'
 import {
   usePersonSegmentation,
   type PersonMask,
@@ -34,6 +35,9 @@ export const faceLandmarksBus: { faces: FaceData[] } = { faces: [] }
 
 /** Publica la mascara de persona/cuerpo para Digital Shadow. */
 export const personMaskBus: { mask: PersonMask | null } = { mask: null }
+
+/** Publica el esqueleto corporal para Digital Shadow. */
+export const poseLandmarksBus: { poses: PoseData[] } = { poses: [] }
 
 const VIRTUAL_W = 1280
 const VIRTUAL_H = 720
@@ -148,6 +152,12 @@ export default function HandTracker() {
     startSegmentation,
     stopSegmentation,
   } = usePersonSegmentation(videoRef)
+  const {
+    poses,
+    error: poseError,
+    startDetection: startPoseDetection,
+    stopDetection: stopPoseDetection,
+  } = usePoseTracking(videoRef)
 
   // Arranca/detiene la webcam segun cameraActive
   useEffect(() => {
@@ -196,11 +206,14 @@ export default function HandTracker() {
     if (cameraActive && matterMode === 'digitalShadow') {
       startFaceDetection()
       startSegmentation()
+      startPoseDetection()
     } else {
       stopFaceDetection()
       stopSegmentation()
+      stopPoseDetection()
       faceLandmarksBus.faces = []
       personMaskBus.mask = null
+      poseLandmarksBus.poses = []
     }
   }, [
     cameraActive,
@@ -209,6 +222,8 @@ export default function HandTracker() {
     stopFaceDetection,
     startSegmentation,
     stopSegmentation,
+    startPoseDetection,
+    stopPoseDetection,
   ])
 
   useEffect(() => {
@@ -218,6 +233,10 @@ export default function HandTracker() {
   useEffect(() => {
     personMaskBus.mask = personMask
   }, [personMask])
+
+  useEffect(() => {
+    poseLandmarksBus.poses = poses
+  }, [poses])
 
   // Traduce manos detectadas -> punteros del bus, o activa el fallback
   useEffect(() => {
@@ -376,10 +395,10 @@ export default function HandTracker() {
   // Reporta errores de MediaPipe al HUD
   useEffect(() => {
     if (error) setCurrentGesture('MediaPipe no disponible')
-    else if (matterMode === 'digitalShadow' && (faceError || segmentationError)) {
+    else if (matterMode === 'digitalShadow' && (faceError || segmentationError || poseError)) {
       setCurrentGesture('Digital Shadow: rostro demo')
     }
-  }, [error, faceError, segmentationError, matterMode, setCurrentGesture])
+  }, [error, faceError, segmentationError, poseError, matterMode, setCurrentGesture])
 
   // Publica el <video> para que otros efectos (modo Fuerza) lo usen como textura
   useEffect(() => {

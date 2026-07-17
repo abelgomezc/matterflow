@@ -10,6 +10,17 @@ export interface PersonMask {
   data: Float32Array
 }
 
+/** Factor de suavizado temporal (0-1). Valores mas altos = mas estable pero
+ *  mas lento a reaccionar. 0.45 quita el parpadeo de la mascara sin retraso
+ *  molesto. */
+const MASK_SMOOTHING = 0.45
+
+/** La segmentacion es el modelo mas pesado. Limitarla a ~22 fps (en vez de
+ *  correr en cada fotograma de video) libera GPU para face/pose y evita que
+ *  los tres modelos se saturen mutuamente causando caidas de FPS. La mascara
+ *  suavizada (MASK_SMOOTHING) oculta este paso mas lento. */
+const SEGMENT_MIN_INTERVAL_MS = 45
+
 const SEGMENTER_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite'
 
@@ -22,6 +33,9 @@ export const usePersonSegmentation = (
   const animFrameRef = useRef<number | undefined>(undefined)
   const lastVideoTimeRef = useRef(-1)
   const runningRef = useRef(false)
+  const smoothRef = useRef<Float32Array | null>(null)
+  const smoothSizeRef = useRef({ width: 0, height: 0 })
+  const lastRunRef = useRef(0)
 
   const initMediaPipe = useCallback(async () => {
     if (segmenterRef.current) return segmenterRef.current
@@ -79,20 +93,51 @@ export const usePersonSegmentation = (
         video.currentTime !== lastVideoTimeRef.current
       ) {
         lastVideoTimeRef.current = video.currentTime
-        try {
-          activeSegmenter.segmentForVideo(video, performance.now(), (result) => {
-            const confidenceMask = result.confidenceMasks?.[0]
-            if (!confidenceMask) return
-            setMask({
-              width: confidenceMask.width,
-              height: confidenceMask.height,
-              data: confidenceMask.getAsFloat32Array().slice(),
-            })
-          })
-        } catch (e) {
-          console.error('[MatterFlow] segmentForVideo:', e)
+        const now = performance.now()
+        // Throttle: no reprocesar la mascara en cada frame de video.
+        if (now - lastRunRef.current >= SEGMENT_MIN_INTERVAL_MS) {
+          lastRunRef.current = now
+          try {
+            activeSegmenter.segmentForVideo(
+              video,
+              now,
+              (result) => {
+                  const confidenceMask = result.confidenceMasks?.[0]
+                  if (!confidenceMask) return
+                  const raw = confidenceMask.getAsFloat32Array()
+                  const w = confidenceMask.width
+                  const h = confidenceMask.height
+                  const sameSize =
+                    smoothSizeRef.current.width === w &&
+                    smoothSizeRef.current.height === h
+
+                  // Suavizado exponencial del borde de la mascara: evita el
+                  // parpadeo y los "saltos" de la segmentacion entre fotogramas.
+                  let out: Float32Array
+                  if (sameSize && smoothRef.current) {
+                    const prev = smoothRef.current
+                    for (let i = 0; i < raw.length; i += 1) {
+                      prev[i] += (raw[i] - prev[i]) * MASK_SMOOTHING
+                    }
+                    out = prev
+                  } else {
+                    smoothRef.current = raw.slice()
+                    smoothSizeRef.current = { width: w, height: h }
+                    out = smoothRef.current
+                  }
+
+                  setMask({
+                    width: w,
+                    height: h,
+                    data: out,
+                  })
+                }
+              )
+            } catch (e) {
+              console.error('[MatterFlow] segmentForVideo:', e)
+            }
+          }
         }
-      }
 
       animFrameRef.current = requestAnimationFrame(detect)
     }
@@ -102,6 +147,8 @@ export const usePersonSegmentation = (
   const stopSegmentation = useCallback(() => {
     runningRef.current = false
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+    smoothRef.current = null
+    smoothSizeRef.current = { width: 0, height: 0 }
     setMask(null)
   }, [])
 

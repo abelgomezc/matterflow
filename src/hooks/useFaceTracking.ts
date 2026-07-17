@@ -25,6 +25,25 @@ export const useFaceTracking = (
   const animFrameRef = useRef<number | undefined>(undefined)
   const lastVideoTimeRef = useRef(-1)
   const runningRef = useRef(false)
+  /** Estado suavizado (lerp) de los landmarks faciales para evitar temblores. */
+  const smoothRef = useRef<Landmark[]>([])
+
+/** Factor de suavizado facial (0-1). 0.5 elimina el jitter de MediaPipe sin
+ *  que el rostro parezca "arrastrarse". */
+const FACE_SMOOTHING = 0.5
+
+const lerpFace = (prev: Landmark[] | undefined, next: Landmark[]): Landmark[] => {
+  if (!prev || prev.length !== next.length) return next
+  return next.map((p, i) => {
+    const b = prev[i]
+    if (!b) return p
+    return {
+      x: b.x + (p.x - b.x) * FACE_SMOOTHING,
+      y: b.y + (p.y - b.y) * FACE_SMOOTHING,
+      z: b.z + (p.z - b.z) * FACE_SMOOTHING,
+    }
+  })
+}
 
   const initMediaPipe = useCallback(async () => {
     if (landmarkerRef.current) return landmarkerRef.current
@@ -89,7 +108,11 @@ export const useFaceTracking = (
           const results = activeLandmarker.detectForVideo(video, performance.now())
           if (results.faceLandmarks.length > 0) {
             const faceData = results.faceLandmarks.map((lm) => {
-              const mirrored = lm.map((p) => ({ x: 1 - p.x, y: p.y, z: p.z }))
+              const mirrored = lerpFace(
+                smoothRef.current,
+                lm.map((p) => ({ x: 1 - p.x, y: p.y, z: p.z }))
+              )
+              smoothRef.current = mirrored
               const minX = Math.min(...mirrored.map((p) => p.x))
               const maxX = Math.max(...mirrored.map((p) => p.x))
               const minY = Math.min(...mirrored.map((p) => p.y))
@@ -104,6 +127,7 @@ export const useFaceTracking = (
             })
             setFaces(faceData)
           } else {
+            smoothRef.current = []
             setFaces((prev) => (prev.length === 0 ? prev : []))
           }
         } catch (e) {
@@ -118,6 +142,7 @@ export const useFaceTracking = (
   const stopDetection = useCallback(() => {
     runningRef.current = false
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+    smoothRef.current = []
     setFaces([])
   }, [])
 
