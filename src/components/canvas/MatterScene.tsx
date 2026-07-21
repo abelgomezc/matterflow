@@ -19,6 +19,7 @@ import RaysSystem from './RaysSystem'
 import ForceSystem from './ForceSystem'
 import UniverseCreationSystem from './UniverseCreationSystem'
 import DigitalShadowSystem from './DigitalShadowSystem'
+import DustSystem from './DustSystem'
 
 /** Cuenta FPS y lo publica al store (throttle ~5 veces/seg). */
 function FpsMeter() {
@@ -50,6 +51,8 @@ function ActiveMatter() {
       return <UniverseCreationSystem />
     case 'digitalShadow':
       return <DigitalShadowSystem />
+    case 'dust':
+      return <DustSystem />
     case 'particles':
     default:
       return <ParticleSystem />
@@ -62,8 +65,8 @@ function ClearColorByMode() {
 
   useEffect(() => {
     gl.setClearColor(
-      new THREE.Color('#000004'),
-      mode === 'create' ? 1 : 0
+      new THREE.Color('#000000'),
+      mode === 'create' || mode === 'dust' ? 1 : 0
     )
   }, [gl, mode])
 
@@ -109,20 +112,23 @@ export default function MatterScene() {
 function Post() {
   const mode = useMatterStore((s) => s.matterMode)
   if (mode === 'force') return null
+  const isDust = mode === 'dust'
   return (
     <EffectComposer>
       <Bloom
-        intensity={1.15}
-        luminanceThreshold={0.12}
-        luminanceSmoothing={0.9}
+        intensity={isDust ? 2.1 : 1.15}
+        luminanceThreshold={isDust ? 0.04 : 0.12}
+        luminanceSmoothing={0.85}
         mipmapBlur
       />
-      <ChromaticAberration
-        blendFunction={BlendFunction.NORMAL}
-        offset={new THREE.Vector2(0.0006, 0.0006)}
-        radialModulation={false}
-        modulationOffset={0}
-      />
+      {!isDust && (
+        <ChromaticAberration
+          blendFunction={BlendFunction.NORMAL}
+          offset={new THREE.Vector2(0.0006, 0.0006)}
+          radialModulation={false}
+          modulationOffset={0}
+        />
+      )}
     </EffectComposer>
   )
 }

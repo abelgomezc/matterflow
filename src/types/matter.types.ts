@@ -8,6 +8,7 @@ export type MatterMode =
   | 'force'
   | 'create'
   | 'digitalShadow'
+  | 'dust'
 export type InteractionMode = 'attract' | 'repel' | 'vortex' | 'freeze' | 'create'
 export type UniverseTool =
   | 'planet'

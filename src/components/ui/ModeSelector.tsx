@@ -7,6 +7,7 @@ const MODES: { id: MatterMode; label: string; icon: string; color: string }[] = 
   { id: 'force', label: 'Fuerza', icon: 'FX', color: '#7DD3FC' },
   { id: 'rays', label: 'Rayos', icon: 'RY', color: '#1E6BFF' },
   { id: 'particles', label: 'Particulas', icon: 'PT', color: '#6C63FF' },
+  { id: 'dust', label: 'Polvo', icon: 'D', color: '#48CAE4' },
   { id: 'plasma', label: 'Plasma', icon: 'PL', color: '#C084FC' },
   { id: 'create', label: 'Crear', icon: '+', color: '#34D399' },
   { id: 'digitalShadow', label: 'Digital Shadow', icon: 'DS', color: '#F472B6' },

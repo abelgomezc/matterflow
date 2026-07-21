@@ -22,6 +22,10 @@ const AMEN: GestureItem = { icon: '🙏', name: 'Dos manos juntas', action: 'Sor
 
 const BY_MODE: Record<MatterMode, GestureItem[]> = {
   particles: [...COMMON, AMEN],
+  dust: [
+    { icon: 'P', name: 'Palma abierta', action: 'Esfera de polvo en la palma' },
+    { icon: 'C', name: 'Cerrar la mano', action: 'Deshacer la esfera' },
+  ],
   plasma: [
     { icon: '🖐️', name: 'Dedos / palma', action: 'Los arcos siguen tus dedos' },
     { icon: '🙌', name: 'Dos manos', action: 'Arco entre las manos' },
@@ -58,6 +62,7 @@ const BY_MODE: Record<MatterMode, GestureItem[]> = {
 
 const MODE_NAME: Record<MatterMode, string> = {
   particles: 'Particulas',
+  dust: 'Polvo',
   plasma: 'Plasma',
   rays: 'Rayos',
   force: 'Fuerza',

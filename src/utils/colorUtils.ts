@@ -44,11 +44,32 @@ export const colorForMode = (mode: MatterMode): THREE.Color => {
       return c('#34D399')
     case 'digitalShadow':
       return c('#F472B6')
+    case 'dust':
+      return c('#48CAE4')
     case 'particles':
     default:
       return c('#6C63FF')
   }
 }
+
+/** Color azul claro de la esfera de polvo (modo Dust). */
+export const DUST_SPHERE_COLOR = '#7DD3FC'
+
+/** Gradiente de polvo: arena oscura -> ocre -> arena clara -> blanco calido. */
+const DUST_STOPS = [c('#3A2E1E'), c('#8A6B3E'), c('#C9A86A'), c('#F2E4C4')]
+export const colorByDust = (t: number, target = new THREE.Color()): THREE.Color =>
+  gradient(DUST_STOPS, t, target)
+
+/** Cyan electrico para esfera de polvo luminosa (referencia visual). */
+const DUST_CYAN_STOPS = [
+  c('#0A5F7A'),
+  c('#00B4D8'),
+  c('#48CAE4'),
+  c('#90E0EF'),
+  c('#FFFFFF'),
+]
+export const colorByDustCyan = (t: number, target = new THREE.Color()): THREE.Color =>
+  gradient(DUST_CYAN_STOPS, t, target)
 
 const PLASMA_STOPS = [c('#000004'), c('#6C63FF'), c('#C084FC'), c('#FFFFFF')]
 export const plasmaColor = (t: number, target = new THREE.Color()): THREE.Color =>
