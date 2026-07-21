@@ -10,7 +10,6 @@ import { useMatterStore } from '../../store/matterStore'
 import { colorByEnergy } from '../../utils/colorUtils'
 import { glowSprite } from '../../utils/textures'
 
-const INITIAL = 380 // 300-500 particulas
 const MAX = 1000
 const TRAIL = 8
 
@@ -18,6 +17,7 @@ export default function ParticleSystem() {
   const { viewport } = useThree()
   const physics = useParticlePhysics()
   const setParticleCount = useMatterStore((s) => s.setParticleCount)
+  const handsDetected = useMatterStore((s) => s.handsDetected)
 
   const pointsRef = useRef<THREE.Points>(null)
   const trailRef = useRef<THREE.Points>(null)
@@ -43,7 +43,7 @@ export default function ParticleSystem() {
 
   useEffect(() => {
     dims.current = { w: window.innerWidth, h: window.innerHeight }
-    physics.init(INITIAL, dims.current.w, dims.current.h)
+    physics.init(0, dims.current.w, dims.current.h)
     const onResize = () => {
       dims.current = { w: window.innerWidth, h: window.innerHeight }
     }
@@ -53,7 +53,7 @@ export default function ParticleSystem() {
 
   useFrame(() => {
     const { w, h } = dims.current
-    physics.step(getPointers(), w, h)
+    physics.step(getPointers(), w, h, handsDetected)
 
     const arr = physics.particles.current
     const n = Math.min(arr.length, MAX)

@@ -113,22 +113,33 @@ function Post() {
   const mode = useMatterStore((s) => s.matterMode)
   if (mode === 'force') return null
   const isDust = mode === 'dust'
+  if (isDust) {
+    return (
+      <EffectComposer>
+        <Bloom
+          intensity={2.1}
+          luminanceThreshold={0.04}
+          luminanceSmoothing={0.85}
+          mipmapBlur
+        />
+      </EffectComposer>
+    )
+  }
+
   return (
     <EffectComposer>
       <Bloom
-        intensity={isDust ? 2.1 : 1.15}
-        luminanceThreshold={isDust ? 0.04 : 0.12}
-        luminanceSmoothing={0.85}
+        intensity={1.15}
+        luminanceThreshold={0.12}
+        luminanceSmoothing={0.9}
         mipmapBlur
       />
-      {!isDust && (
-        <ChromaticAberration
-          blendFunction={BlendFunction.NORMAL}
-          offset={new THREE.Vector2(0.0006, 0.0006)}
-          radialModulation={false}
-          modulationOffset={0}
-        />
-      )}
+      <ChromaticAberration
+        blendFunction={BlendFunction.NORMAL}
+        offset={new THREE.Vector2(0.0006, 0.0006)}
+        radialModulation={false}
+        modulationOffset={0}
+      />
     </EffectComposer>
   )
 }

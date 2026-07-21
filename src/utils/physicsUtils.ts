@@ -95,7 +95,7 @@ export const integrateParticle = (
   p: Particle,
   w: number,
   h: number,
-  gravity = PHYSICS.GRAVITY
+  gravity: number = PHYSICS.GRAVITY
 ): void => {
   if (p.frozen) {
     p.frozenTimer -= 1
