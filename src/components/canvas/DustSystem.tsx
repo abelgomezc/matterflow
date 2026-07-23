@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { handLandmarksBus } from '../camera/HandTracker'
-import { getPointers } from '../../store/pointerBus'
 import { useMatterStore } from '../../store/matterStore'
 import { dist2D } from '../../utils/handUtils'
 import { colorByDustCyan } from '../../utils/colorUtils'
@@ -106,10 +105,11 @@ export default function DustSystem() {
 
   const grainsRef = useRef<DustGrain[]>([])
   const pointsRef = useRef<THREE.Points>(null)
-  const radiusRef = useRef(0)
-  const centerRef = useRef(new THREE.Vector3())
+  const radiiRef = useRef([0, 0])
+  const centersRef = useRef([new THREE.Vector3(), new THREE.Vector3()])
   const spinRef = useRef(0)
   const wasActiveRef = useRef(false)
+  const lastTargetCountRef = useRef(0)
   const lastStatus = useRef({ text: '', at: 0 })
   const tmpColor = useMemo(() => new THREE.Color(), [])
 
@@ -135,57 +135,60 @@ export default function DustSystem() {
     }
   }
 
-  const resolveTarget = (vw: number, vh: number): HandInfo | null => {
+  const resolveTargets = (vw: number, vh: number): HandInfo[] => {
     const hands = handLandmarksBus.hands
-    if (hands.length > 0) {
-      const open = hands.map((h) => readHand(h, vw, vh)).filter((i) => i.open)
-      return open[0] ?? null
-    }
-    const ptr = getPointers().find((p) => p.active)
-    if (!ptr) return null
-    return {
-      open: true,
-      x: (ptr.x - 0.5) * vw,
-      y: (0.5 - ptr.y) * vh,
-      openness: 0.5 + ptr.intensity * 0.4,
-    }
+    if (hands.length === 0) return []
+    return hands.map((h) => readHand(h, vw, vh)).slice(0, 2)
   }
 
   useFrame((state, delta) => {
     const { width: vw, height: vh } = viewport
     const dt = Math.min(delta, 0.033)
     const t = state.clock.elapsedTime
-    const target = resolveTarget(vw, vh)
+    const targets = resolveTargets(vw, vh)
 
-    if (target) {
-      const goal = MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * target.openness
-      radiusRef.current += (goal - radiusRef.current) * Math.min(1, dt * 4)
-      centerRef.current.x += (target.x - centerRef.current.x) * Math.min(1, dt * 8)
-      centerRef.current.y += (target.y - centerRef.current.y) * Math.min(1, dt * 8)
-    } else {
-      radiusRef.current += (0 - radiusRef.current) * Math.min(1, dt * 3)
+    for (let i = 0; i < 2; i += 1) {
+      const target = targets[i]
+      if (target) {
+        const goal = MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * target.openness
+        if (radiiRef.current[i] < 0.03) {
+          centersRef.current[i].x = target.x
+          centersRef.current[i].y = target.y
+        }
+        radiiRef.current[i] += (goal - radiiRef.current[i]) * Math.min(1, dt * 4)
+        centersRef.current[i].x += (target.x - centersRef.current[i].x) * Math.min(1, dt * 8)
+        centersRef.current[i].y += (target.y - centersRef.current[i].y) * Math.min(1, dt * 8)
+      } else {
+        radiiRef.current[i] += (0 - radiiRef.current[i]) * Math.min(1, dt * 3)
+      }
     }
 
-    const r = radiusRef.current
-    const active = r > 0.06
-    const cx = centerRef.current.x
-    const cy = centerRef.current.y
+    const active = radiiRef.current.some((r) => r > 0.06)
+    const forming = targets.length > 0 && active
     const cz = 0
 
-    if (active && !wasActiveRef.current) {
-      for (const g of grainsRef.current) {
+    if (
+      forming &&
+      (!wasActiveRef.current || lastTargetCountRef.current !== targets.length)
+    ) {
+      for (let i = 0; i < grainsRef.current.length; i += 1) {
+        const g = grainsRef.current[i]
+        const owner = targets.length > 0 ? i % targets.length : 0
+        const r = radiiRef.current[owner]
+        const center = centersRef.current[owner]
         const shellR = r * g.radial * 0.12
-        g.x = cx + g.dirX * shellR
-        g.y = cy + g.dirY * shellR
+        g.x = center.x + g.dirX * shellR
+        g.y = center.y + g.dirY * shellR
         g.z = cz + g.dirZ * shellR
         g.vx = 0
         g.vy = 0
         g.vz = 0
       }
     }
-    wasActiveRef.current = active
+    wasActiveRef.current = forming
+    lastTargetCountRef.current = targets.length
 
-    if (active) spinRef.current += dt * 0.22
+    if (forming) spinRef.current += dt * 0.22
 
     const cosS = Math.cos(spinRef.current)
     const sinS = Math.sin(spinRef.current)
@@ -194,8 +197,13 @@ export default function DustSystem() {
 
     for (let i = 0; i < grains.length; i += 1) {
       const g = grains[i]
+      const owner = targets.length > 0 ? i % targets.length : i % 2
+      const r = radiiRef.current[owner]
+      const center = centersRef.current[owner]
+      const cx = center.x
+      const cy = center.y
 
-      if (!active) {
+      if (!forming) {
         const fade = Math.min(1, r / MIN_RADIUS)
         if (fade < 0.04) continue
 
@@ -287,14 +295,19 @@ export default function DustSystem() {
       geom.setDrawRange(0, visible)
     }
 
-    setParticleCount(active ? visible : Math.min(visible, 800))
+    setParticleCount(forming ? visible : Math.min(visible, 800))
 
-    if (active) {
-      status(`Esfera de polvo: ${((r / MAX_RADIUS) * 100).toFixed(0)}%`)
+    if (forming) {
+      const maxRadius = Math.max(...radiiRef.current)
+      status(
+        targets.length > 1
+          ? `Polvo: ${targets.length} esferas`
+          : `Esfera de polvo: ${((maxRadius / MAX_RADIUS) * 100).toFixed(0)}%`
+      )
     } else if (handLandmarksBus.hands.length > 0) {
-      status('Abre la palma para invocar la esfera')
+      status('Muestra las manos para invocar polvo')
     } else {
-      status('Abre la palma frente a la camara')
+      status('Sin manos: polvo disuelto')
     }
   })
 
